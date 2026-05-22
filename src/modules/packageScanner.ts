@@ -2,8 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as cp from 'child_process';
 import * as vscode from 'vscode';
-import * as toml from '@iarna/toml';
 import { Logger } from '../utils/logger.js';
+import { getGroupFromFileName } from './parsers/utils.js';
+import { parseRequirementsTxt } from './parsers/requirementsParser.js';
+import { parsePyprojectToml } from './parsers/pyprojectParser.js';
+import { parseSetupPy } from './parsers/setupPyParser.js';
+import { parseSetupCfg } from './parsers/setupCfgParser.js';
+import { parsePipfile } from './parsers/pipfileParser.js';
 
 export type DepFileType = 'requirements.txt' | 'pyproject.toml' | 'setup.py' | 'setup.cfg' | 'Pipfile';
 
@@ -139,28 +144,35 @@ export class PackageScanner {
   }
 
   private getGroupFromFileName(filename: string): 'main' | 'dev' | 'test' | 'docs' | 'lint' {
-    const name = filename.toLowerCase();
-    if (name.includes('dev')) { return 'dev'; }
-    if (name.includes('test')) { return 'test'; }
-    if (name.includes('docs') || name.includes('doc')) { return 'docs'; }
-    if (name.includes('lint')) { return 'lint'; }
-    return 'main';
+    return getGroupFromFileName(filename);
   }
 
-  private getEnvironmentFromFileName(filename: string): 'main' | 'dev' | 'test' | 'prod' {
-    const name = filename.toLowerCase();
-    if (name.includes('dev')) { return 'dev'; }
-    if (name.includes('test')) { return 'test'; }
-    if (name.includes('prod')) { return 'prod'; }
-    return 'main';
+  public parseRequirementsTxt(filePath: string, group?: 'main' | 'dev' | 'test' | 'docs' | 'lint'): ScannedPackage[] {
+    const finalGroup = group || this.getGroupFromFileName(path.basename(filePath));
+    return parseRequirementsTxt(filePath, finalGroup);
+  }
+
+  public parsePyprojectToml(filePath: string): ScannedPackage[] {
+    return parsePyprojectToml(filePath);
+  }
+
+  public parseSetupPy(filePath: string): ScannedPackage[] {
+    return parseSetupPy(filePath);
+  }
+
+  public parseSetupCfg(filePath: string): ScannedPackage[] {
+    return parseSetupCfg(filePath);
+  }
+
+  public parsePipfile(filePath: string): ScannedPackage[] {
+    return parsePipfile(filePath, this.logger);
   }
 
   private parseDepFile(filePath: string): ScannedPackage[] {
     const basename = path.basename(filePath);
     try {
       if (basename.endsWith('.txt') || basename.endsWith('.in')) {
-        const group = this.getGroupFromFileName(basename);
-        return this.parseRequirementsTxt(filePath, group);
+        return this.parseRequirementsTxt(filePath);
       }
       if (basename === 'pyproject.toml') {
         return this.parsePyprojectToml(filePath);
@@ -178,410 +190,6 @@ export class PackageScanner {
       this.logger.error(`Failed to parse ${filePath}: ${String(err)}`);
     }
     return [];
-  }
-
-  private parseRequirementsTxt(
-    filePath: string,
-    group: 'main' | 'dev' | 'test' | 'docs' | 'lint' | 'optional' = 'main',
-    visited = new Set<string>()
-  ): ScannedPackage[] {
-    // Determine environment based on filename
-    const environment = this.getEnvironmentFromFileName(path.basename(filePath));
-    if (visited.has(filePath)) { return []; }
-    visited.add(filePath);
-
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const results: ScannedPackage[] = [];
-
-    // Join continuation lines
-    const normalized = content.replace(/\\\n\s*/g, ' ');
-    const lines = normalized.split('\n');
-
-    for (const rawLine of lines) {
-      // Strip inline comments
-      const line = rawLine.split('#')[0].trim();
-      if (!line) { continue; }
-
-      // Follow -r / --requirement includes
-      const includeMatch = line.match(/^(?:-r|--requirement)\s+(.+)$/);
-      if (includeMatch) {
-        const includePath = includeMatch[1].trim();
-        const absInclude = path.resolve(path.dirname(filePath), includePath);
-        if (fs.existsSync(absInclude)) {
-          const includeGroup = this.getGroupFromFileName(path.basename(absInclude));
-          results.push(...this.parseRequirementsTxt(absInclude, includeGroup, visited));
-        }
-        continue;
-      }
-
-      // Skip other options (-i, --index-url, -c, -e, --extra-index-url, etc.) and URLs
-      if (
-        line.startsWith('-') ||
-        line.startsWith('http://') ||
-        line.startsWith('https://')
-      ) {
-        continue;
-      }
-
-      // Match: name[extras]version_spec or name[extras]
-      const match = line.match(
-        /^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)(\[([^\]]+)\])?(.*)?$/
-      );
-      if (!match) {
-        continue;
-      }
-
-      results.push({
-        name: this.normalizeName(match[1]),
-        specifiedVersion: (match[5] ?? '').trim(),
-        installedVersion: '',
-        source: 'requirements.txt',
-        extras: match[4] ? match[4].split(',').map(e => e.trim()) : [],
-        requires: [],
-        group,
-        environment,
-      });
-    }
-
-    return results;
-  }
-
-  private parsePyprojectToml(filePath: string): ScannedPackage[] {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const parsed = toml.parse(content) as Record<string, unknown>;
-    const results: ScannedPackage[] = [];
-
-    // PEP 621: [project] dependencies = ["requests>=2.0", ...]
-    const projectDeps =
-      (parsed as { project?: { dependencies?: unknown[] } })?.project
-        ?.dependencies ?? [];
-    for (const dep of projectDeps as string[]) {
-      const m = dep.match(/^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)(\[.*?\])?(.*)?$/);
-      if (m) {
-        results.push({
-          name: this.normalizeName(m[1]),
-          specifiedVersion: (m[4] ?? '').trim(),
-          installedVersion: '',
-          source: 'pyproject.toml',
-          extras: m[3] ? m[3].slice(1, -1).split(',').map(e => e.trim()) : [],
-          requires: [],
-          group: 'main',
-          environment: 'main',
-        });
-      }
-    }
-
-    // PEP 621: [project.optional-dependencies] sections
-    const optionalDeps =
-      (parsed as { project?: { 'optional-dependencies'?: Record<string, unknown[]> } })
-        ?.project?.['optional-dependencies'] ?? {};
-    for (const [sectionKey, deps] of Object.entries(optionalDeps)) {
-      const grp = this.keyToGroup(sectionKey);
-      for (const dep of deps as string[]) {
-        const m = dep.match(/^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)(\[.*?\])?(.*)?$/);
-        if (m) {
-          results.push({
-            name: this.normalizeName(m[1]),
-            specifiedVersion: (m[4] ?? '').trim(),
-            installedVersion: '',
-            source: 'pyproject.toml',
-            extras: m[3] ? m[3].slice(1, -1).split(',').map(e => e.trim()) : [],
-            requires: [],
-            group: grp,
-            environment: 'main',
-          });
-        }
-      }
-    }
-
-    // Poetry: [tool.poetry.dependencies]
-    const poetryDeps =
-      (
-        parsed as {
-          tool?: { poetry?: { dependencies?: Record<string, unknown> } };
-        }
-      )?.tool?.poetry?.dependencies ?? {};
-    for (const [pkgName, version] of Object.entries(poetryDeps)) {
-      if (pkgName.toLowerCase() === 'python') {
-        continue;
-      }
-      const spec =
-        typeof version === 'string'
-          ? version
-          : (version as Record<string, string>)?.version ?? '';
-      results.push({
-        name: this.normalizeName(pkgName),
-        specifiedVersion: spec,
-        installedVersion: '',
-        source: 'pyproject.toml',
-        extras: [],
-        requires: [],
-        group: 'main',
-        environment: 'main',
-      });
-    }
-
-    // Poetry: [tool.poetry.dev-dependencies]
-    const poetryDevDeps =
-      (
-        parsed as {
-          tool?: { poetry?: { 'dev-dependencies'?: Record<string, unknown> } };
-        }
-      )?.tool?.poetry?.['dev-dependencies'] ?? {};
-    for (const [pkgName, version] of Object.entries(poetryDevDeps)) {
-      const spec =
-        typeof version === 'string'
-          ? version
-          : (version as Record<string, string>)?.version ?? '';
-      results.push({
-        name: this.normalizeName(pkgName),
-        specifiedVersion: spec,
-        installedVersion: '',
-        source: 'pyproject.toml',
-        extras: [],
-        requires: [],
-        group: 'dev',
-        environment: 'dev',
-      });
-    }
-
-    // Poetry: [tool.poetry.group.<name>.dependencies]
-    const poetryGroups =
-      (
-        parsed as {
-          tool?: { poetry?: { group?: Record<string, { dependencies?: Record<string, unknown> }> } };
-        }
-      )?.tool?.poetry?.group ?? {};
-    for (const [groupName, groupData] of Object.entries(poetryGroups)) {
-      const grp = this.keyToGroup(groupName);
-      const env = this.keyToEnvironment(groupName);
-      for (const [pkgName, version] of Object.entries(groupData.dependencies ?? {})) {
-        const spec =
-          typeof version === 'string'
-            ? version
-            : (version as Record<string, string>)?.version ?? '';
-        results.push({
-          name: this.normalizeName(pkgName),
-          specifiedVersion: spec,
-          installedVersion: '',
-          source: 'pyproject.toml',
-          extras: [],
-          requires: [],
-          group: grp,
-          environment: env,
-        });
-      }
-    }
-
-    return results;
-  }
-
-  private keyToGroup(key: string): 'main' | 'dev' | 'test' | 'docs' | 'lint' | 'optional' {
-    const k = key.toLowerCase();
-    if (k.includes('dev')) { return 'dev'; }
-    if (k.includes('test')) { return 'test'; }
-    if (k.includes('docs') || k.includes('doc')) { return 'docs'; }
-    if (k.includes('lint')) { return 'lint'; }
-    return 'optional';
-  }
-
-  private keyToEnvironment(key: string): 'main' | 'dev' | 'test' | 'prod' {
-    const k = key.toLowerCase();
-    if (k.includes('dev')) { return 'dev'; }
-    if (k.includes('test')) { return 'test'; }
-    if (k.includes('prod')) { return 'prod'; }
-    return 'main';
-  }
-
-  private parseSetupPy(filePath: string): ScannedPackage[] {
-    // Regex-only parse — never execute setup.py (arbitrary code risk)
-    const content = fs.readFileSync(filePath, 'utf-8');
-
-    const results: ScannedPackage[] = [];
-
-    const blockMatch = content.match(/install_requires\s*=\s*\[([^\]]*)\]/s);
-    if (blockMatch) {
-      const depEntries = blockMatch[1].matchAll(
-        /['"]([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)(\[.*?\])?([^'"]*)['"]/g
-      );
-
-      for (const m of depEntries) {
-        results.push({
-          name: this.normalizeName(m[1]),
-          specifiedVersion: (m[4] ?? '').trim(),
-          installedVersion: '',
-          source: 'setup.py',
-          extras: m[3] ? m[3].slice(1, -1).split(',').map(e => e.trim()) : [],
-          requires: [],
-          group: 'main',
-          environment: 'main',
-        });
-      }
-    }
-
-    // Parse extras_require for dev/test/docs groups
-    const extrasMatch = content.match(/extras_require\s*=\s*\{([^}]*)\}/s);
-    if (extrasMatch) {
-      // Find each key: [list] section
-      const sectionRe = /['"]([^'"]+)['"]\s*:\s*\[([^\]]*)\]/gs;
-      let sectionM: RegExpExecArray | null;
-      while ((sectionM = sectionRe.exec(extrasMatch[1])) !== null) {
-        const sectionKey = sectionM[1];
-        const grp = this.keyToGroup(sectionKey);
-        const env = this.keyToEnvironment(sectionKey);
-        const depEntries = sectionM[2].matchAll(
-          /['"]([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)(\[.*?\])?([^'"]*)['"]/g
-        );
-        for (const m of depEntries) {
-          results.push({
-            name: this.normalizeName(m[1]),
-            specifiedVersion: (m[4] ?? '').trim(),
-            installedVersion: '',
-            source: 'setup.py',
-            extras: m[3] ? m[3].slice(1, -1).split(',').map(e => e.trim()) : [],
-            requires: [],
-            group: grp,
-            environment: env,
-          });
-        }
-      }
-    }
-
-    return results;
-  }
-
-  private parseSetupCfg(filePath: string): ScannedPackage[] {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const results: ScannedPackage[] = [];
-
-    // Split into INI sections by lines starting with [
-    const sectionParts = content.split(/^(?=\[)/m);
-
-    for (const part of sectionParts) {
-      const headerMatch = part.match(/^\[([^\]]+)\]/);
-      if (!headerMatch) { continue; }
-
-      const sectionName = headerMatch[1].trim();
-      const body = part.slice(headerMatch[0].length);
-
-      if (sectionName === 'options') {
-        const depsValue = this.extractIniKey(body, 'install_requires');
-        if (depsValue) {
-          for (const dep of this.splitSetupCfgDeps(depsValue)) {
-            const pkg = this.parseSingleDep(dep, 'setup.cfg', 'main', 'main');
-            if (pkg) { results.push(pkg); }
-          }
-        }
-      } else if (sectionName === 'options.extras_require') {
-        for (const { key, value } of this.extractIniPairs(body)) {
-          const grp = this.keyToGroup(key);
-          const env = this.keyToEnvironment(key);
-          for (const dep of this.splitSetupCfgDeps(value)) {
-            const pkg = this.parseSingleDep(dep, 'setup.cfg', grp, env);
-            if (pkg) { results.push(pkg); }
-          }
-        }
-      }
-    }
-
-    return results;
-  }
-
-  private parsePipfile(filePath: string): ScannedPackage[] {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = toml.parse(content) as Record<string, unknown>;
-    } catch (err) {
-      this.logger.warn(`Failed to parse Pipfile as TOML: ${String(err)}`);
-      return [];
-    }
-
-    const results: ScannedPackage[] = [];
-    const skip = new Set(['python_version', 'python_full_version']);
-
-    const processSection = (
-      section: Record<string, unknown>,
-      group: 'main' | 'dev',
-      environment: 'main' | 'dev'
-    ): void => {
-      for (const [pkgName, version] of Object.entries(section)) {
-        if (skip.has(pkgName.toLowerCase())) { continue; }
-        let spec = '';
-        let extras: string[] = [];
-        if (typeof version === 'string') {
-          spec = version === '*' ? '' : version;
-        } else if (typeof version === 'object' && version !== null) {
-          const v = version as Record<string, unknown>;
-          spec = typeof v['version'] === 'string' ? (v['version'] === '*' ? '' : v['version']) : '';
-          if (Array.isArray(v['extras'])) {
-            extras = (v['extras'] as unknown[]).map(String);
-          }
-        }
-        results.push({
-          name: this.normalizeName(pkgName),
-          specifiedVersion: spec,
-          installedVersion: '',
-          source: 'Pipfile',
-          extras,
-          requires: [],
-          group,
-          environment,
-        });
-      }
-    };
-
-    const packages = parsed['packages'] as Record<string, unknown> | undefined;
-    const devPackages = parsed['dev-packages'] as Record<string, unknown> | undefined;
-    if (packages) { processSection(packages, 'main', 'main'); }
-    if (devPackages) { processSection(devPackages, 'dev', 'dev'); }
-
-    return results;
-  }
-
-  private parseSingleDep(
-    dep: string,
-    source: DepFileType,
-    group: ScannedPackage['group'],
-    environment: ScannedPackage['environment'] = 'main'
-  ): ScannedPackage | null {
-    const m = dep.match(
-      /^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)(\[([^\]]+)\])?(.*)?$/
-    );
-    if (!m) { return null; }
-    return {
-      name: this.normalizeName(m[1]),
-      specifiedVersion: (m[5] ?? '').trim(),
-      installedVersion: '',
-      source,
-      extras: m[4] ? m[4].split(',').map(e => e.trim()) : [],
-      requires: [],
-      group,
-      environment,
-    };
-  }
-
-  private extractIniKey(body: string, key: string): string | null {
-    // Matches: key = value\n  continuation\n  continuation
-    const re = new RegExp(`^${key}\\s*=\\s*(.*(?:\\n[ \\t]+.*)*)`, 'm');
-    const m = body.match(re);
-    return m ? m[1] : null;
-  }
-
-  private extractIniPairs(body: string): Array<{ key: string; value: string }> {
-    const pairs: Array<{ key: string; value: string }> = [];
-    const re = /^([\w-]+)\s*=\s*(.*(?:\n[ \t]+.*)*)$/gm;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(body)) !== null) {
-      pairs.push({ key: m[1], value: m[2] });
-    }
-    return pairs;
-  }
-
-  private splitSetupCfgDeps(value: string): string[] {
-    return value.split(/[\n;]/)
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith('#') && /^[A-Za-z]/.test(l));
   }
 
   private async getPipInstalledVersions(

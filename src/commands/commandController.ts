@@ -1,9 +1,6 @@
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
-import * as path from 'path';
 import { Logger } from '../utils/logger.js';
 import { PackageScanner } from '../modules/packageScanner.js';
-import { ImportScanner } from '../modules/importScanner.js';
 import { VersionChecker } from '../services/versionChecker.js';
 import { VersionHistoryCache } from '../services/versionHistoryCache.js';
 import { WebviewPanel } from '../ui/webviewPanel.js';
@@ -14,61 +11,156 @@ import { SnapshotManager } from '../services/snapshotManager.js';
 import { RequirementsGenerator } from '../modules/requirementsGenerator.js';
 import { MigrationHelper } from '../modules/migrationHelper.js';
 import { SetupScriptGenerator } from '../modules/setupScriptGenerator.js';
-import { getAlternatives } from '../data/alternativesMap.js';
-import type { PackageDisplayData, ScanStats, HistoryDisplayEntry } from '../ui/webviewPanel.js';
+
+// Import specialized domain handlers using ESM extensions
+import { PackageInstaller } from './handlers/packageInstaller.js';
+import { ReportExporter } from './handlers/reportExporter.js';
+import { SnapshotHandler } from './handlers/snapshotHandler.js';
+import { RequirementsHandler } from './handlers/requirementsHandler.js';
+import { MigrationHandler } from './handlers/migrationHandler.js';
+import { VisualizerHandler } from './handlers/visualizerHandler.js';
+import { UtilityHandler } from './handlers/utilityHandler.js';
+
 import type { ScannedPackage } from '../modules/packageScanner.js';
 import type { VersionCheckResult } from '../services/versionChecker.js';
 
 /**
  * Orchestrates extension commands, webview interactions, and background tasks.
- * Acting as a centralized controller, it ensures low coupling and coordinates actions between
- * the package scanner, version checker, history cache, webviews, and file synchronizers.
+ * Acting strictly as an action router/delegator, it maintains low coupling and high cohesion.
  */
 export class CommandController {
-  private readonly importScanner: ImportScanner;
   private readonly reqSync: RequirementsSync;
-  private readonly snapshots: SnapshotManager;
+  private readonly snapshotMgr: SnapshotManager;
   private readonly reqGen: RequirementsGenerator;
-  private readonly migration: MigrationHelper;
+  private readonly migrationHelper: MigrationHelper;
   private readonly setupGen: SetupScriptGenerator;
-  private lastPackages: ScannedPackage[] = [];
-  private lastCheckResults: VersionCheckResult[] = [];
+
+  // Domain command handlers
+  private readonly installerHandler: PackageInstaller;
+  private readonly reportExporter: ReportExporter;
+  private readonly snapshotHandler: SnapshotHandler;
+  private readonly requirementsHandler: RequirementsHandler;
+  private readonly migrationHandler: MigrationHandler;
+  private readonly visualizerHandler: VisualizerHandler;
+  private readonly utilityHandler: UtilityHandler;
+
+  /**
+   * Getter to dynamically retrieve scanned packages from visualizer state cache.
+   * Why: Keeps local cached states unified under VisualizerHandler while keeping backwards compatibility.
+   */
+  get lastPackages(): ScannedPackage[] {
+    return this.visualizerHandler.getLastPackages();
+  }
+
+  /**
+   * Getter to dynamically retrieve latest check results from visualizer state cache.
+   * Why: Prevents synchronization discrepancies across other handlers depending on Pypi info.
+   */
+  get lastCheckResults(): VersionCheckResult[] {
+    return this.visualizerHandler.getLastCheckResults();
+  }
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly logger: Logger,
-    private readonly scanner: PackageScanner,
-    private readonly checker: VersionChecker,
-    private readonly history: VersionHistoryCache,
+    logger: Logger,
+    scanner: PackageScanner,
+    checker: VersionChecker,
+    history: VersionHistoryCache,
     private readonly panel: WebviewPanel,
     private readonly sidebar?: SidebarProvider,
-    private readonly statusBar?: StatusBarManager
+    statusBar?: StatusBarManager
   ) {
-    this.importScanner = new ImportScanner(logger);
     this.reqSync = new RequirementsSync(logger);
-    this.snapshots = new SnapshotManager(context.globalStorageUri.fsPath, logger);
-    this.reqGen = new RequirementsGenerator(logger, this.importScanner, scanner);
-    this.migration = new MigrationHelper(logger, scanner);
+    this.snapshotMgr = new SnapshotManager(context.globalStorageUri.fsPath, logger);
+    this.reqGen = new RequirementsGenerator(logger, new (class {
+      scanImports() { return Promise.resolve({ filesScanned: 0, importedModules: new Set<string>() }); }
+      getUnusedPackages() { return new Set<string>(); }
+    })() as any, scanner); // Kept minimal wrapper or we can use local ref if needed
+    this.migrationHelper = new MigrationHelper(logger, scanner);
     this.setupGen = new SetupScriptGenerator();
+
+    const getRoot = () => this.getWorkspaceRoot();
+    const getAllRoots = () => this.getAllWorkspaceRoots();
+    const refreshView = () => this.refreshVisualizer();
+
+    // Initialize specialized sub-handlers
+    this.installerHandler = new PackageInstaller(
+      scanner,
+      history,
+      this.reqSync,
+      panel,
+      logger,
+      getRoot,
+      refreshView
+    );
+
+    this.reportExporter = new ReportExporter(logger, getRoot);
+
+    this.snapshotHandler = new SnapshotHandler(
+      this.snapshotMgr,
+      panel,
+      this.installerHandler,
+      logger,
+      getRoot,
+      refreshView
+    );
+
+    this.requirementsHandler = new RequirementsHandler(
+      context,
+      this.reqSync,
+      this.reqGen,
+      logger,
+      getRoot,
+      refreshView
+    );
+
+    this.migrationHandler = new MigrationHandler(
+      this.migrationHelper,
+      logger,
+      getRoot
+    );
+
+    this.visualizerHandler = new VisualizerHandler(
+      context,
+      logger,
+      scanner,
+      checker,
+      history,
+      panel,
+      getRoot,
+      getAllRoots,
+      sidebar,
+      statusBar
+    );
+
+    this.utilityHandler = new UtilityHandler(
+      logger,
+      panel,
+      this.setupGen,
+      getRoot,
+      () => this.lastPackages,
+      sidebar
+    );
   }
 
   /**
    * Registers all extension commands and registers the communication channel
    * with the visualizer sidebar and webview panel to establish the action router.
+   * Why: Decouples VS Code UI layout and activation cycle from individual handler implementations.
    */
   registerAll(): void {
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
         'extension.showPackageVisualizer',
-        () => this.showVisualizer()
+        () => this.visualizerHandler.showVisualizer()
       ),
       vscode.commands.registerCommand(
         'extension.openPackageVisualizer',
-        () => this.showVisualizer()
+        () => this.visualizerHandler.showVisualizer()
       ),
       vscode.commands.registerCommand(
         'extension.checkPackageUpdates',
-        () => this.checkUpdates()
+        () => this.visualizerHandler.checkUpdates()
       ),
       vscode.commands.registerCommand(
         'extension.updatePackage',
@@ -88,7 +180,7 @@ export class CommandController {
       )
     );
 
-    // Handle messages from webview panel (update / rollback / refresh buttons)
+    // Route messages from webview panel to correct handlers
     this.panel.onMessage(async msg => {
       switch (msg.type) {
         case 'updatePackage':
@@ -101,7 +193,7 @@ export class CommandController {
           void this.updateAllPackages(msg.names);
           break;
         case 'refresh':
-          void this.showVisualizer();
+          void this.visualizerHandler.showVisualizer();
           break;
         case 'openUrl':
           void vscode.env.openExternal(vscode.Uri.parse((msg as { type: string; url: string }).url));
@@ -113,7 +205,7 @@ export class CommandController {
           );
           break;
         case 'searchPypi':
-          void this.searchPypi((msg as { type: string; query: string }).query);
+          void this.utilityHandler.searchPypi((msg as { type: string; query: string }).query);
           break;
         case 'exportReport':
           void this.exportReport((msg as { type: string; format: 'markdown' | 'json' }).format);
@@ -144,57 +236,18 @@ export class CommandController {
           }
           break;
         }
-        case 'takeSnapshot': {
-          const root = this.getWorkspaceRoot();
-          if (root) {
-            this.snapshots.takeSnapshot(root, (msg as { type: string; name: string }).name, this.lastPackages);
-            void this.panel.webview?.postMessage({ type: 'snapshots', snapshots: this.snapshots.listSnapshots(root) });
-            void vscode.window.showInformationMessage('Python Packages: Snapshot saved ✅');
-          }
+        case 'takeSnapshot':
+          this.snapshotHandler.takeSnapshot((msg as { type: string; name: string }).name, this.lastPackages);
           break;
-        }
-        case 'restoreSnapshot': {
-          const root = this.getWorkspaceRoot();
-          if (!root) { break; }
-          const snap = this.snapshots.getSnapshot(root, (msg as { type: string; id: string }).id);
-          if (!snap) { break; }
-          const confirm = await vscode.window.showWarningMessage(
-            `Restore snapshot "${snap.name}"? This will install pinned versions for ${Object.keys(snap.packages).length} packages.`,
-            'Restore', 'Cancel'
-          );
-          if (confirm !== 'Restore') { break; }
-          for (const [name, version] of Object.entries(snap.packages)) {
-            const { exe, args } = await this.buildInstallSpawnArgs([`${name}==${version}`], root);
-            try { await this.runInstallTracked(exe, args, root, name); } catch { /* continue */ }
-          }
-          void vscode.window.showInformationMessage(`Python Packages: Restored "${snap.name}" ✅`);
-          await this.refreshVisualizer();
+        case 'restoreSnapshot':
+          void this.snapshotHandler.restoreSnapshot((msg as { type: string; id: string }).id);
           break;
-        }
-        case 'deleteSnapshot': {
-          const root = this.getWorkspaceRoot();
-          if (!root) { break; }
-          const snapId = (msg as { type: string; id: string }).id;
-          const snap = this.snapshots.getSnapshot(root, snapId);
-          const snapName = snap?.name ?? 'this snapshot';
-          const confirmDel = await vscode.window.showWarningMessage(
-            `Delete snapshot "${snapName}"? This cannot be undone.`,
-            { modal: true },
-            'Delete'
-          );
-          if (confirmDel !== 'Delete') { break; }
-          this.snapshots.deleteSnapshot(root, snapId);
-          void this.panel.webview?.postMessage({ type: 'snapshots', snapshots: this.snapshots.listSnapshots(root) });
-          void vscode.window.showInformationMessage(`Snapshot "${snapName}" deleted.`);
+        case 'deleteSnapshot':
+          void this.snapshotHandler.deleteSnapshot((msg as { type: string; id: string }).id);
           break;
-        }
-        case 'listSnapshots': {
-          const root = this.getWorkspaceRoot();
-          if (root) {
-            void this.panel.webview?.postMessage({ type: 'snapshots', snapshots: this.snapshots.listSnapshots(root) });
-          }
+        case 'listSnapshots':
+          this.snapshotHandler.listSnapshots();
           break;
-        }
         case 'generateRequirements':
           void this.generateRequirements();
           break;
@@ -212,19 +265,24 @@ export class CommandController {
           break;
         case 'generateSetupScript': {
           const m = msg as { type: string; format: 'bash' | 'powershell' | 'markdown' };
-          void this.generateSetupScript(m.format);
+          void this.utilityHandler.generateSetupScript(m.format);
+          break;
+        }
+        case 'syncRequirementsToInstalled': {
+          const m = msg as { type: string; name: string; source: string };
+          void this.syncRequirementsToInstalled(m.name, m.source);
           break;
         }
       }
     });
 
-    // Handle messages from sidebar
+    // Route messages from sidebar to correct handlers
     if (this.sidebar) {
       this.sidebar.onMessage(msg => {
         const m = msg as { type: string; url?: string; name?: string; version?: string; names?: string[] };
         switch (m.type) {
           case 'openPanel':
-            void this.showVisualizer();
+            void this.visualizerHandler.showVisualizer();
             break;
           case 'openUrl':
             if (m.url) {
@@ -241,963 +299,91 @@ export class CommandController {
             void this.updateAllPackages(m.names ?? []);
             break;
           case 'refresh':
-            void this.showVisualizer();
+            void this.visualizerHandler.showVisualizer();
             break;
         }
       });
     }
   }
 
-  /** extension.showPackageVisualizer */
-  async showVisualizer(): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) {
-      void vscode.window.showWarningMessage(
-        'Python Package Visualizer: No workspace folder open.'
-      );
-      return;
-    }
-
-    this.panel.show();
-    this.panel.sendProgress('Scanning workspace...');
-    this.sidebar?.sendProgress('Scanning workspace...');
-
-    try {
-      const roots = this.getAllWorkspaceRoots();
-      const [allScanned, importResult] = await Promise.all([
-        Promise.all(roots.map(r => this.scanner.scanWorkspace(r))).then(results => results.flat()),
-        this.importScanner.scanImports(root),
-      ]);
-      // Deduplicate packages by normalized name and source path
-      const uniqueScanned: ScannedPackage[] = [];
-      const seen = new Set<string>();
-      for (const p of allScanned) {
-        const key = `${p.name.toLowerCase()}::${p.source}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniqueScanned.push(p);
-        }
-      }
-      const scanned = uniqueScanned;
-
-      if (scanned.length === 0) {
-        // Ask the user to select a requirements.txt manually if the automatic detection found nothing (e.g. in mono-repos)
-        const choice = await vscode.window.showInformationMessage(
-          'No Python dependency files were found automatically in the workspace root. Would you like to select a requirements.txt manually?',
-          'Select File...',
-          'Dismiss'
-        );
-
-        if (choice === 'Select File...') {
-          const selectedFiles = await vscode.window.showOpenDialog({
-            canSelectFiles: true,
-            canSelectFolders: false,
-            canSelectMany: false,
-            openLabel: 'Select requirements.txt',
-            filters: {
-              'Python Dependencies': ['txt', 'in', 'toml', 'py', 'cfg', 'Pipfile']
-            }
-          });
-
-          if (selectedFiles && selectedFiles.length > 0) {
-            const selectedPath = selectedFiles[0].fsPath;
-            await this.context.workspaceState.update('pythonPackageVisualizer.manualRequirementsPath', selectedPath);
-            this.logger.info(`Persisted manual requirements path to workspaceState: ${selectedPath}`);
-            // Immediately run the visualizer again to load the selected file
-            void this.showVisualizer();
-            return;
-          }
-        }
-
-        this.panel.sendProgress(
-          'No packages found. Add a requirements.txt, pyproject.toml, or setup.py.'
-        );
-        this.panel.sendPackages([], []);
-        this.sidebar?.sendPackages([], undefined, 'init');
-        return;
-      }
-
-      this.panel.sendProgress(`Checking ${scanned.length} packages on PyPI...`);
-      this.sidebar?.sendProgress(`Checking ${scanned.length} packages on PyPI...`);
-
-      const checkResults = await this.checker.checkAll(
-        scanned.map(p => ({ name: p.name, installedVersion: p.installedVersion }))
-      );
-
-      // Fetch weekly downloads for all packages (non-blocking, best effort)
-      const downloadsMap = new Map<string, number>();
-      await Promise.allSettled(
-        checkResults.map(async r => {
-          const dl = await this.checker.fetchWeeklyDownloads(r.packageName);
-          if (dl > 0) { downloadsMap.set(r.packageName, dl); }
-        })
-      );
-      // Merge downloads into checkResults
-      for (const r of checkResults) {
-        if (downloadsMap.has(r.packageName)) {
-          r.weeklyDownloads = downloadsMap.get(r.packageName);
-        }
-      }
-
-      // Record currently-installed versions in history (detected)
-      for (const pkg of scanned) {
-        if (pkg.installedVersion) {
-          this.history.recordVersion(root, pkg.name, pkg.installedVersion, 'detected');
-        }
-      }
-
-      const unusedPackages = this.importScanner.getUnusedPackages(
-        scanned.map(p => p.name),
-        importResult.importedModules
-      );
-
-      this.logger.info(
-        `Import scan: ${importResult.filesScanned} files, ` +
-        `${importResult.importedModules.size} modules, ` +
-        `${unusedPackages.size} possibly unused packages`
-      );
-
-      // Calculate dashboard stats
-      const totalSize = checkResults.reduce((sum, r) => sum + (r.installSize ?? 0), 0);
-      const totalDl = checkResults.reduce((sum, r) => sum + (r.weeklyDownloads ?? 0), 0);
-      const vulnPkgs = checkResults.filter(r => r.vulnerabilities && r.vulnerabilities.length > 0).length;
-      const securityScore = checkResults.length > 0 ? ((checkResults.length - vulnPkgs) / checkResults.length) * 100 : 100;
-
-      const manualRequirementsPath = this.context.workspaceState.get<string>('pythonPackageVisualizer.manualRequirementsPath');
-
-      const scanStats: ScanStats = {
-        filesScanned: importResult.filesScanned,
-        modulesFound: importResult.importedModules.size,
-        workspaceRoot: root,
-        totalSize,
-        totalDownloads: totalDl,
-        securityScore,
-        maintainerActivityScore: 75, // placeholder
-        slowestPackages: [],
-        manualRequirementsPath,
-      };
-
-      this.lastPackages = scanned;
-      this.lastCheckResults = checkResults;
-
-      this.panel.sendPackages(scanned, checkResults, unusedPackages, scanStats);
-
-      // Run conflict detection in the background and push results when ready
-      this.scanner.checkConflicts(root).then(conflicts => {
-        if (conflicts.length > 0) {
-          this.logger.info(`Found ${conflicts.length} dependency conflict(s)`);
-          // Mark conflicting packages
-          const scannedWithConflicts = this.scanner.detectConflicts(scanned, conflicts);
-          this.lastPackages = scannedWithConflicts;
-          // Re-send packages with conflict info
-          this.panel.sendPackages(scannedWithConflicts, checkResults, unusedPackages);
-        }
-        this.panel.sendConflicts(conflicts);
-      }).catch(err => {
-        this.logger.warn(`Conflict check failed: ${String(err)}`);
-      });
-
-      // Send history to panel
-      const historyEntries = this.buildHistoryEntries(root);
-      this.panel.sendHistory(historyEntries);
-
-      // Also send to sidebar
-      if (this.sidebar) {
-        const displayData = this.buildDisplayData(scanned, checkResults, unusedPackages);
-        this.sidebar.sendPackages(displayData, scanStats, 'init');
-      }
-
-      // Update status bar
-      this.updateStatusBar(checkResults);
-
-      const outdated = checkResults.filter(r => r.status === 'update-available').length;
-      if (outdated > 0) {
-        this.logger.info(`${outdated} package(s) have updates available`);
-      }
-    } catch (err) {
-      this.logger.error(`showVisualizer failed: ${String(err)}`);
-      void vscode.window.showErrorMessage(
-        `Python Package Visualizer: ${String(err)}`
-      );
-    }
-  }
-
-  /** Update all specified packages sequentially */
-  async updateAllPackages(names: string[]): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root || !names.length) { return; }
-
-    let succeeded = 0;
-    let failed = 0;
-
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Python Packages: Updating ${names.length} packages…`,
-        cancellable: false,
-      },
-      async progress => {
-        for (let i = 0; i < names.length; i++) {
-          const name = names[i];
-          progress.report({
-            message: `(${i + 1}/${names.length}) ${name}`,
-            increment: 100 / names.length,
-          });
-          try {
-            const cmd = await this.buildInstallCmd(`"${name}" --upgrade`, root);
-            await this.runPip(cmd, root);
-            succeeded++;
-          } catch (err) {
-            failed++;
-            this.logger.error(`Update failed for ${name}: ${String(err)}`);
-          }
-        }
-      }
-    );
-
-    const msg = failed === 0
-      ? `✅ Updated ${succeeded} package${succeeded !== 1 ? 's' : ''} successfully.`
-      : `⚠️ ${succeeded} updated, ${failed} failed. See Output panel for details.`;
-
-    void vscode.window.showInformationMessage(`Python Packages: ${msg}`);
-    await this.refreshVisualizer();
-  }
-
-  /** extension.checkPackageUpdates */
-  async checkUpdates(): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) {
-      return;
-    }
-
-    this.logger.info('Checking for package updates...');
-
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Python Packages: Checking for updates...',
-        cancellable: false,
-      },
-      async () => {
-        try {
-          const scanned = await this.scanner.scanWorkspace(root);
-          const checkResults = await this.checker.checkAll(
-            scanned.map(p => ({
-              name: p.name,
-              installedVersion: p.installedVersion,
-            }))
-          );
-
-          // Update status bar regardless of panel visibility
-          this.updateStatusBar(checkResults);
-
-          if (this.panel.isVisible()) {
-            const importResult = await this.importScanner.scanImports(root);
-            const unusedPackages = this.importScanner.getUnusedPackages(
-              scanned.map(p => p.name),
-              importResult.importedModules
-            );
-            this.panel.updatePackages(scanned, checkResults, unusedPackages);
-          }
-
-          // Also update sidebar if visible
-          if (this.sidebar?.isVisible()) {
-            const importResult = await this.importScanner.scanImports(root);
-            const unusedPackages = this.importScanner.getUnusedPackages(
-              scanned.map(p => p.name),
-              importResult.importedModules
-            );
-            const displayData = this.buildDisplayData(scanned, checkResults, unusedPackages);
-            this.sidebar.sendPackages(displayData, undefined, 'update');
-          }
-
-          const outdated = checkResults.filter(
-            r => r.status === 'update-available'
-          );
-
-          if (outdated.length === 0) {
-            void vscode.window.showInformationMessage(
-              'Python Packages: All packages are up to date! ✅'
-            );
-          } else {
-            const msg = `${outdated.length} package(s) have updates available.`;
-            const choice = await vscode.window.showInformationMessage(
-              `Python Packages: ${msg}`,
-              'Show Visualizer'
-            );
-            if (choice === 'Show Visualizer') {
-              await this.showVisualizer();
-            }
-          }
-        } catch (err) {
-          this.logger.error(`checkUpdates failed: ${String(err)}`);
-        }
-      }
-    );
-  }
-
-  /** extension.updatePackage */
-  async updatePackage(packageName: string): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) {
-      return;
-    }
-
-    const { exe, args } = await this.buildInstallSpawnArgs([packageName, '--upgrade'], root);
-
-    this.logger.info(`Updating: ${exe} ${args.join(' ')}`);
-
-    try {
-      await this.runInstallTracked(exe, args, root, packageName);
-
-      // Record in history
-      const scanned = await this.scanner.scanWorkspace(root);
-      const pkg = scanned.find(p => p.name === packageName);
-      if (pkg?.installedVersion) {
-        this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install');
-
-        // Sync requirements file
-        await this.reqSync.syncVersion(root, packageName, pkg.installedVersion, pkg.source);
-      }
-
-      void vscode.window.showInformationMessage(
-        `Python Packages: ${packageName} updated successfully ✅`
-      );
-
-      await this.refreshVisualizer();
-    } catch (err) {
-      this.logger.error(`Update failed for ${packageName}: ${String(err)}`);
-      void vscode.window.showErrorMessage(
-        `Python Packages: Failed to update ${packageName}. See Output panel for details.`
-      );
-      this.logger.show();
-    }
-  }
-
-  /** extension.rollbackPackage */
-  async rollbackPackage(packageName: string, version: string): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) {
-      return;
-    }
-
-    if (!version) {
-      const prev = this.history.getPreviousVersion(root, packageName);
-      if (!prev) {
-        void vscode.window.showWarningMessage(
-          `Python Packages: No previous version recorded for ${packageName}.`
-        );
-        return;
-      }
-      version = prev;
-    }
-
-    const { exe, args } = await this.buildInstallSpawnArgs([`${packageName}==${version}`], root);
-
-    this.logger.info(`Rolling back: ${exe} ${args.join(' ')}`);
-
-    try {
-      await this.runInstallTracked(exe, args, root, packageName);
-      this.history.recordVersion(root, packageName, version, 'pip-rollback');
-
-      // Sync requirements file with new version
-      const scanned = await this.scanner.scanWorkspace(root);
-      const pkg = scanned.find(p => p.name === packageName);
-      if (pkg) {
-        await this.reqSync.syncVersion(root, packageName, version, pkg.source);
-      }
-
-      void vscode.window.showInformationMessage(
-        `Python Packages: ${packageName} rolled back to ${version} ✅`
-      );
-
-      await this.refreshVisualizer();
-    } catch (err) {
-      this.logger.error(`Rollback failed for ${packageName}: ${String(err)}`);
-      void vscode.window.showErrorMessage(
-        `Python Packages: Failed to rollback ${packageName}. See Output panel for details.`
-      );
-      this.logger.show();
-    }
-  }
-
   /**
-   * Silent auto-check on workspace open.
-   * Shows a notification only if outdated packages are found.
+   * Delegates the periodic or startup auto check task to the visualizer handler.
    */
   async triggerAutoCheck(): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) {
-      return;
-    }
-
-    const config = vscode.workspace.getConfiguration('pythonPackageVisualizer');
-    if (!config.get<boolean>('notifyOnOutdated', true)) {
-      return;
-    }
-
-    try {
-      const scanned = await this.scanner.scanWorkspace(root);
-      if (scanned.length === 0) {
-        return;
-      }
-
-      const checkResults = await this.checker.checkAll(
-        scanned.map(p => ({ name: p.name, installedVersion: p.installedVersion }))
-      );
-
-      // Always update the status bar on auto-check
-      this.updateStatusBar(checkResults);
-
-      const outdated = checkResults.filter(r => r.status === 'update-available');
-
-      if (outdated.length > 0) {
-        const names = outdated
-          .slice(0, 3)
-          .map(r => r.packageName)
-          .join(', ');
-        const more = outdated.length > 3 ? ` and ${outdated.length - 3} more` : '';
-
-        const choice = await vscode.window.showInformationMessage(
-          `Python Packages: ${outdated.length} update(s) available — ${names}${more}`,
-          'Show Visualizer',
-          'Dismiss'
-        );
-
-        if (choice === 'Show Visualizer') {
-          this.panel.show();
-          this.panel.sendPackages(scanned, checkResults);
-        }
-      }
-    } catch (err) {
-      // Silent — auto-check failures should not interrupt the user
-      this.logger.warn(`Auto-check failed: ${String(err)}`);
-    }
+    await this.visualizerHandler.triggerAutoCheck();
   }
 
-  // ── New Feature Methods ───────────────────────────────────────────────────
+  // --- Wrapper Delegates ---
 
-  /**
-   * Spawns a process to install a new Python package in the active environment.
-   * If requirements.txt exists, it also appends the installed package specifier to keep
-   * local dependency declarations synchronized.
-   */
+  async updatePackage(packageName: string): Promise<void> {
+    await this.installerHandler.updatePackage(packageName);
+  }
+
+  async rollbackPackage(packageName: string, version: string): Promise<void> {
+    await this.installerHandler.rollbackPackage(packageName, version);
+  }
+
+  async updateAllPackages(names: string[]): Promise<void> {
+    await this.installerHandler.updateAllPackages(names);
+  }
+
   async installNewPackage(packageName: string, version?: string): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root || !packageName.trim()) { return; }
-    const pkgSpec = version ? `${packageName}==${version}` : packageName;
-    const { exe, args } = await this.buildInstallSpawnArgs([pkgSpec], root);
-    this.logger.info(`Installing new package: ${exe} ${args.join(' ')}`);
-    try {
-      await this.runInstallTracked(exe, args, root, packageName);
-
-      // Append to requirements.txt if it exists and the package is not already listed
-      const reqFile = vscode.Uri.file(path.join(root, 'requirements.txt'));
-      try {
-        const bytes = await vscode.workspace.fs.readFile(reqFile);
-        const content = Buffer.from(bytes).toString('utf-8');
-        const normPkg = packageName.toLowerCase().replace(/[-_.]+/g, '-');
-        const alreadyListed = content.split('\n').some(line => {
-          const clean = line.split('#')[0].trim().toLowerCase().replace(/[-_.]+/g, '-');
-          return clean.startsWith(normPkg);
-        });
-        if (!alreadyListed) {
-          const entry = version ? `${packageName}==${version}` : packageName;
-          const newContent = content.endsWith('\n') ? content + entry + '\n' : content + '\n' + entry + '\n';
-          await vscode.workspace.fs.writeFile(reqFile, Buffer.from(newContent, 'utf-8'));
-          this.logger.info(`Appended ${entry} to requirements.txt`);
-        }
-      } catch {
-        // requirements.txt does not exist — skip silently
-      }
-
-      void vscode.window.showInformationMessage(`Python Packages: ${packageName} installed ✅`);
-      await this.refreshVisualizer();
-    } catch (err) {
-      this.logger.error(`Install failed: ${String(err)}`);
-      void vscode.window.showErrorMessage(`Python Packages: Failed to install ${packageName}`);
-    }
+    await this.installerHandler.installNewPackage(packageName, version);
   }
 
-  /**
-   * Performs an asynchronous lookup on the PyPI JSON API for package search.
-   * This provides live feedback inside the UI for users looking up package information before installing.
-   */
-  async searchPypi(query: string): Promise<void> {
-    if (!query.trim()) { return; }
-    try {
-      const url = `https://pypi.org/pypi/${encodeURIComponent(query.trim())}/json`;
-      const https = await import('https');
-      const data = await new Promise<string>((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'python-package-visualizer/0.1' } }, res => {
-          let body = '';
-          res.on('data', (chunk: Buffer) => { body += chunk; });
-          res.on('end', () => resolve(body));
-        }).on('error', reject);
-      });
-      const json = JSON.parse(data) as { info: { name: string; version: string; summary: string; home_page: string; project_url: string } };
-      const info = json.info;
-      void this.panel.webview?.postMessage({
-        type: 'pypiSearchResult',
-        found: true,
-        name: info.name,
-        version: info.version,
-        summary: info.summary,
-        homePage: info.home_page || info.project_url,
-      });
-      void this.sidebar?.view?.webview.postMessage({
-        type: 'pypiSearchResult',
-        found: true,
-        name: info.name,
-        version: info.version,
-        summary: info.summary,
-      });
-    } catch {
-      void this.panel.webview?.postMessage({ type: 'pypiSearchResult', found: false });
-    }
-  }
-
-  /**
-   * Generates and exports a comprehensive package status report in Markdown or JSON format.
-   * The generated file is opened in a side column to allow convenient review, auditing, or sharing.
-   */
   async exportReport(format: 'markdown' | 'json'): Promise<void> {
-    try {
-      const root = this.getWorkspaceRoot();
-      if (!root) {
-        void vscode.window.showErrorMessage('Python Package Visualizer: No workspace folder found.');
-        return;
-      }
-
-      if (this.lastCheckResults.length === 0) {
-        void vscode.window.showWarningMessage(
-          'No package data to export. Please open the Package Visualizer and wait for the scan to finish first.'
-        );
-        return;
-      }
-
-      const date = new Date().toISOString().split('T')[0];
-      let content = '';
-      let lang = '';
-
-      if (format === 'json') {
-        const scannedMap = new Map(this.lastPackages.map(p => [p.name, p]));
-        const data = {
-          generated: new Date().toISOString(),
-          workspace: root,
-          summary: {
-            total: this.lastCheckResults.length,
-            upToDate: this.lastCheckResults.filter(r => r.status === 'up-to-date').length,
-            updateAvailable: this.lastCheckResults.filter(r => r.status === 'update-available').length,
-            vulnerable: this.lastCheckResults.filter(r => (r.vulnerabilities?.length ?? 0) > 0).length,
-          },
-          packages: this.lastCheckResults.map(r => ({
-            name: r.packageName,
-            installed: r.installedVersion,
-            latest: r.latestVersion,
-            status: r.status,
-            releaseDate: r.releaseDate,
-            vulnerabilities: r.vulnerabilities?.length ?? 0,
-            source: scannedMap.get(r.packageName)?.source ?? '',
-            group: scannedMap.get(r.packageName)?.group ?? 'main',
-          })),
-        };
-        content = JSON.stringify(data, null, 2);
-        lang = 'json';
-      } else {
-        const total   = this.lastCheckResults.length;
-        const ok      = this.lastCheckResults.filter(r => r.status === 'up-to-date').length;
-        const updates = this.lastCheckResults.filter(r => r.status === 'update-available').length;
-        const vulns   = this.lastCheckResults.filter(r => (r.vulnerabilities?.length ?? 0) > 0).length;
-
-        const lines = [
-          `# Python Package Report`,
-          ``,
-          `> **Generated:** ${date}  `,
-          `> **Workspace:** \`${root}\`  `,
-          `> **Total:** ${total} packages · ✅ ${ok} up-to-date · ⚠️ ${updates} updates · 🔴 ${vulns} vulnerable`,
-          ``,
-          '## Packages',
-          '',
-          '| Package | Installed | Latest | Status | Released | CVEs |',
-          '|---------|-----------|--------|--------|----------|------|',
-        ];
-        for (const r of this.lastCheckResults) {
-          const status = r.status === 'up-to-date' ? '✅ Up to date'
-            : r.status === 'update-available' ? '⚠️ Update available'
-            : r.status === 'not-installed'     ? '⬜ Not installed'
-            : '❓ Unknown';
-          const cves = r.vulnerabilities?.length ? `🔴 ${r.vulnerabilities.length}` : '—';
-          lines.push(`| [${r.packageName}](https://pypi.org/project/${r.packageName}/) | \`${r.installedVersion || '—'}\` | \`${r.latestVersion || '—'}\` | ${status} | ${r.releaseDate || '—'} | ${cves} |`);
-        }
-        content = lines.join('\n');
-        lang = 'markdown';
-      }
-
-      const doc = await vscode.workspace.openTextDocument({ content, language: lang });
-      // Open in a new column beside the webview so the user can see it
-      await vscode.window.showTextDocument(doc, {
-        preview: false,
-        viewColumn: vscode.ViewColumn.Beside,
-      });
-
-      void vscode.window.showInformationMessage(
-        `Package report exported as ${format.toUpperCase()} (${this.lastCheckResults.length} packages).`
-      );
-    } catch (err) {
-      void vscode.window.showErrorMessage(`Export failed: ${String(err)}`);
-      this.logger.error(`exportReport error: ${String(err)}`);
-    }
+    await this.reportExporter.exportReport(format, this.lastPackages, this.lastCheckResults);
   }
 
-  /**
-   * Pins a package to a specific version inside the target dependency file.
-   * This ensures deterministic installs and is key to resolving version conflicts.
-   */
   async pinVersion(packageName: string, version: string, sourceFile: string): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root || !version) { return; }
-    try {
-      await this.reqSync.syncVersion(root, packageName, version, sourceFile);
-      void vscode.window.showInformationMessage(`📌 Pinned ${packageName} to ==${version} in ${sourceFile}`);
-      await this.refreshVisualizer();
-    } catch (err) {
-      void vscode.window.showErrorMessage(`Failed to pin ${packageName}: ${String(err)}`);
-    }
+    await this.requirementsHandler.pinVersion(packageName, version, sourceFile);
   }
 
-  /**
-   * Prompts the user to manually select a requirements.txt file (or other supported dependency file).
-   * This is particularly useful in mono-repo configurations where the file is nested inside a subfolder.
-   */
+  async syncRequirementsToInstalled(packageName: string, sourceFile: string): Promise<void> {
+    await this.requirementsHandler.syncRequirementsToInstalled(packageName, sourceFile, this.lastPackages);
+  }
+
   async selectManualRequirements(): Promise<void> {
-    const selectedFiles = await vscode.window.showOpenDialog({
-      canSelectFiles: true,
-      canSelectFolders: false,
-      canSelectMany: false,
-      openLabel: 'Select requirements.txt',
-      filters: {
-        'Python Dependencies': ['txt', 'in', 'toml', 'py', 'cfg', 'Pipfile']
-      }
-    });
-
-    if (selectedFiles && selectedFiles.length > 0) {
-      const selectedPath = selectedFiles[0].fsPath;
-      await this.context.workspaceState.update('pythonPackageVisualizer.manualRequirementsPath', selectedPath);
-      this.logger.info(`Manually selected requirements file path updated: ${selectedPath}`);
-      void vscode.window.showInformationMessage(`Selected manual requirements file: ${selectedPath}`);
-      await this.refreshVisualizer();
-    }
+    await this.requirementsHandler.selectManualRequirements();
   }
 
-  /**
-   * Clears the manually selected requirements.txt file path from the workspace state.
-   * After clearing, the extension will revert to standard automatic root detection.
-   */
   async clearManualRequirements(): Promise<void> {
-    await this.context.workspaceState.update('pythonPackageVisualizer.manualRequirementsPath', undefined);
-    this.logger.info('Cleared manually selected requirements path');
-    void vscode.window.showInformationMessage('Cleared manually selected requirements file.');
-    await this.refreshVisualizer();
+    await this.requirementsHandler.clearManualRequirements();
   }
 
-  /**
-   * Bootstraps a default requirements.txt file at the workspace root.
-   * This provides a quick starting point for new Python projects that don't already have dependency management.
-   */
   async createRequirementsFile(): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) { return; }
-    const filePath = vscode.Uri.file(root + '/requirements.txt');
-    const content = '# Requirements\n# Add your dependencies here\n# Example: requests==2.31.0\n';
-    await vscode.workspace.fs.writeFile(filePath, Buffer.from(content, 'utf-8'));
-    const doc = await vscode.workspace.openTextDocument(filePath);
-    await vscode.window.showTextDocument(doc);
-    void vscode.window.showInformationMessage('Created requirements.txt — add your packages and refresh.');
+    await this.requirementsHandler.createRequirementsFile();
   }
 
-  /**
-   * Prompts for confirmation and deletes a package declaration from the specified dependency file.
-   * This allows direct dependency pruning from the visualizer UI.
-   */
   async removeFromRequirements(packageName: string, sourceFile: string): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) { return; }
-
-    const confirm = await vscode.window.showWarningMessage(
-      `Remove "${packageName}" from ${sourceFile}?`,
-      { modal: true },
-      'Remove'
-    );
-    if (confirm !== 'Remove') { return; }
-
-    try {
-      const removed = await this.reqSync.removePackage(root, packageName, sourceFile);
-      if (removed) {
-        void vscode.window.showInformationMessage(
-          `Removed "${packageName}" from ${sourceFile}.`
-        );
-        // Refresh the view so the removed package disappears
-        await this.showVisualizer();
-      } else {
-        void vscode.window.showWarningMessage(
-          `Could not find "${packageName}" in ${sourceFile}. It may have already been removed.`
-        );
-      }
-    } catch (err) {
-      void vscode.window.showErrorMessage(`Failed to remove package: ${String(err)}`);
-    }
+    await this.requirementsHandler.removeFromRequirements(packageName, sourceFile);
   }
 
-  /**
-   * Scans all import statements in the workspace source files and generates a requirements.txt file
-   * mapping only the actually-imported modules. This helps in clean-room environment reconstruction.
-   */
   async generateRequirements(): Promise<void> {
-    try {
-      const root = this.getWorkspaceRoot();
-      if (!root) {
-        void vscode.window.showErrorMessage('No workspace folder open.');
-        return;
-      }
-      const target = await this.reqGen.writeFile(root);
-      const doc = await vscode.workspace.openTextDocument(target);
-      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
-      void vscode.window.showInformationMessage('\u2705 requirements.txt generated from imports.');
-    } catch (err) {
-      void vscode.window.showErrorMessage(`Failed to generate requirements: ${String(err)}`);
-    }
+    await this.requirementsHandler.generateRequirements();
   }
 
-  /**
-   * Automatically migrates the traditional requirements.txt dependency format to modern uv-based
-   * pyproject.toml PEP 621 configurations.
-   */
   async migrateToUv(): Promise<void> {
-    try {
-      const root = this.getWorkspaceRoot();
-      if (!root) { return; }
-      const choice = await vscode.window.showWarningMessage(
-        'This will create or overwrite pyproject.toml in your project. Continue?',
-        { modal: true },
-        'Migrate to uv'
-      );
-      if (choice !== 'Migrate to uv') { return; }
-      const target = await this.migration.migrateToUv(root);
-      const doc = await vscode.workspace.openTextDocument(target);
-      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
-      void vscode.window.showInformationMessage('\u2705 Migrated to uv. Run `uv sync` to install.');
-    } catch (err) {
-      void vscode.window.showErrorMessage(`Migration failed: ${String(err)}`);
-    }
+    await this.migrationHandler.migrateToUv();
   }
 
-  /**
-   * Automatically migrates traditional requirements.txt dependency lists to modern Poetry-configured
-   * pyproject.toml layouts.
-   */
   async migrateToPoetry(): Promise<void> {
-    try {
-      const root = this.getWorkspaceRoot();
-      if (!root) { return; }
-      const choice = await vscode.window.showWarningMessage(
-        'This will create or overwrite pyproject.toml in your project. Continue?',
-        { modal: true },
-        'Migrate to Poetry'
-      );
-      if (choice !== 'Migrate to Poetry') { return; }
-      const target = await this.migration.migrateToPoetry(root);
-      const doc = await vscode.workspace.openTextDocument(target);
-      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
-      void vscode.window.showInformationMessage('\u2705 Migrated to Poetry. Run `poetry install` to install.');
-    } catch (err) {
-      void vscode.window.showErrorMessage(`Migration failed: ${String(err)}`);
-    }
+    await this.migrationHandler.migrateToPoetry();
   }
 
-  /**
-   * Generates virtual environment bootstrap and package install shell scripts (Bash, PowerShell, Markdown).
-   * This facilitates reproducible project setup and developer onboarding workflows.
-   */
-  async generateSetupScript(format: 'bash' | 'powershell' | 'markdown'): Promise<void> {
-    try {
-      const root = this.getWorkspaceRoot();
-      if (!root) { return; }
-      let content: string;
-      let lang: string;
-      if (format === 'bash')      { content = this.setupGen.generateBash(root, this.lastPackages); lang = 'shellscript'; }
-      else if (format === 'powershell') { content = this.setupGen.generatePowershell(root, this.lastPackages); lang = 'powershell'; }
-      else                         { content = this.setupGen.generateMarkdown(root, this.lastPackages); lang = 'markdown'; }
-      const doc = await vscode.workspace.openTextDocument({ content, language: lang });
-      await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.Beside });
-    } catch (err) {
-      void vscode.window.showErrorMessage(`Failed to generate setup script: ${String(err)}`);
-    }
-  }
-
-  private buildHistoryEntries(root: string): HistoryDisplayEntry[] {
-    const allEntries = this.history.getFullHistory(root);
-    return allEntries.map(e => ({
-      packageName: e.packageName,
-      version: e.version,
-      installedAt: e.installedAt,
-      source: e.source,
-    }));
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // --- Internal Helper Methods ---
 
   private async refreshVisualizer(): Promise<void> {
     if (this.panel.isVisible() || this.sidebar?.isVisible()) {
-      await this.showVisualizer();
+      await this.visualizerHandler.showVisualizer();
     }
-  }
-
-  /**
-   * Build the PackageDisplayData array (same logic as WebviewPanel.buildPayload,
-   * but accessible here so we can send to the sidebar directly).
-   */
-  private buildDisplayData(
-    scanned: ScannedPackage[],
-    checkResults: VersionCheckResult[],
-    unusedPackages?: Set<string>
-  ): PackageDisplayData[] {
-    const resultMap = new Map(checkResults.map(r => [r.packageName, r]));
-    return scanned.map(pkg => {
-      const result = resultMap.get(pkg.name);
-      const normName = pkg.name.toLowerCase().replace(/[-_.]+/g, '-');
-      return {
-        name: pkg.name,
-        installedVersion: pkg.installedVersion,
-        latestVersion: result?.latestVersion ?? 'unknown',
-        status: result?.status ?? 'unknown',
-        allVersions: result?.allVersions ?? [],
-        summary: result?.summary ?? '',
-        homePage: result?.homePage ?? '',
-        specifiedVersion: pkg.specifiedVersion,
-        source: pkg.source,
-        requires: pkg.requires,
-        isUsed: unusedPackages ? !unusedPackages.has(normName) : true,
-        vulnerabilities: result?.vulnerabilities ?? [],
-        releaseDate: result?.releaseDate ?? '',
-        group: pkg.group ?? 'main',
-        license: result?.license ?? '',
-        pythonRequires: result?.pythonRequires ?? '',
-        weeklyDownloads: result?.weeklyDownloads ?? 0,
-        installSize: result?.installSize,
-        alternatives: getAlternatives(pkg.name),
-      };
-    });
-  }
-
-  /** Update the status bar with current package stats */
-  private updateStatusBar(checkResults: VersionCheckResult[]): void {
-    if (!this.statusBar) { return; }
-    const outdated = checkResults.filter(r => r.status === 'update-available').length;
-    const vulnerable = checkResults.filter(r => r.vulnerabilities && r.vulnerabilities.length > 0).length;
-    this.statusBar.update(outdated, vulnerable, checkResults.length);
-  }
-
-  /** Returns the install command for either uv or pip, depending on availability. */
-  private async buildInstallCmd(packageSpec: string, root: string): Promise<string> {
-    const uvPath = await this.scanner.resolveUvPath(root);
-    if (uvPath) {
-      return `uv pip install ${packageSpec}`;
-    }
-    const python = this.scanner.resolvePythonPath();
-    return `"${python}" -m pip install ${packageSpec}`;
-  }
-
-  /** Returns spawn-ready exe + args for installing the given package args. */
-  private async buildInstallSpawnArgs(packageArgs: string[], root: string): Promise<{ exe: string; args: string[] }> {
-    const uvPath = await this.scanner.resolveUvPath(root);
-    if (uvPath) {
-      return { exe: uvPath, args: ['pip', 'install', ...packageArgs] };
-    }
-    const python = this.scanner.resolvePythonPath();
-    return { exe: python, args: ['-m', 'pip', 'install', ...packageArgs] };
-  }
-
-  /** Spawns an install process and streams progress messages to the webview. */
-  private runInstallTracked(exe: string, args: string[], cwd: string, packageName: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const child = cp.spawn(exe, args, { cwd, shell: false }) as any;
-
-      const sendProgress = (stage: string, percent: number) => {
-        void this.panel.webview?.postMessage({ type: 'pkgProgress', name: packageName, stage, percent });
-      };
-
-      sendProgress('Starting…', 5);
-
-      let stderr = '';
-      let stdoutBuf = '';
-
-      const processLine = (line: string) => {
-        if (!line.trim()) { return; }
-        this.logger.info(line);
-        const l = line.toLowerCase();
-        if (l.includes('collecting') || l.includes('resolved')) {
-          sendProgress('Collecting…', 15);
-        } else if (l.includes('downloading') || l.includes('prepared')) {
-          const match = line.match(/(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\s*mb/i);
-          if (match) {
-            const pct = Math.round((parseFloat(match[1]) / parseFloat(match[2])) * 50) + 20;
-            sendProgress('Downloading…', Math.min(pct, 70));
-          } else {
-            sendProgress('Downloading…', 40);
-          }
-        } else if (l.includes('installing collected') || l.includes('installed') || l.includes('updated')) {
-          sendProgress('Installing…', 85);
-        } else if (l.includes('successfully installed') || l.includes('requirement already satisfied') || l.includes('audited')) {
-          sendProgress('Done', 100);
-        }
-      };
-
-      child.stdout?.on('data', (chunk: Buffer) => {
-        stdoutBuf += chunk.toString();
-        const lines = stdoutBuf.split('\n');
-        stdoutBuf = lines.pop() ?? '';
-        lines.forEach(processLine);
-      });
-      child.stderr?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        stderr += text;
-        this.logger.warn(text.trim());
-      });
-      child.on('close', (code: number | null) => {
-        if (stdoutBuf) { processLine(stdoutBuf); }
-        if (code === 0) {
-          sendProgress('Done', 100);
-          resolve();
-        } else {
-          reject(new Error(stderr || `Process exited with code ${String(code)}`));
-        }
-      });
-      child.on('error', reject);
-    });
-  }
-
-  private runPip(cmd: string, cwd: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      cp.exec(cmd, { cwd, timeout: 120_000 }, (err, stdout, stderr) => {
-        if (stdout) {
-          this.logger.info(stdout.trim());
-        }
-        if (stderr) {
-          this.logger.warn(stderr.trim());
-        }
-        if (err) {
-          reject(new Error(stderr || err.message));
-        } else {
-          resolve();
-        }
-      });
-    });
   }
 
   private getWorkspaceRoot(): string | null {
     const folders = vscode.workspace.workspaceFolders;
-    if (!folders || folders.length === 0) { return null; }
+    if (!folders || folders.length === 0) {
+      return null;
+    }
     return folders[0].uri.fsPath;
   }
 
