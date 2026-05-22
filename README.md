@@ -4,7 +4,7 @@
 
 **The ultimate dependency manager for Python projects in VS Code**
 
-![Version](https://img.shields.io/badge/version-3.0.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.0.1-blue?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![VS Code](https://img.shields.io/badge/vscode-%5E1.85.0-007ACC?style=flat-square&logo=visualstudiocode)
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python)
@@ -180,7 +180,7 @@ Inside the Package Visualizer panel:
 
 ---
 
-## 🎯 What's New in v3.0.0
+## 🎯 What's New in v3.0.1
 
 - 📝 **Import Annotations** above every import line with Update/Install quick actions
 - 📊 **Function Metrics** (lines, references, complexity) above every `def`
@@ -226,7 +226,7 @@ Virtual environments are auto-detected from: `.venv/`, `venv/`, `env/`, `.env/`.
 
 ### From VSIX
 ```bash
-code --install-extension python-package-visualizer-3.0.0.vsix
+code --install-extension python-package-visualizer-3.0.1.vsix
 ```
 
 ---

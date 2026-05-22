@@ -138,10 +138,10 @@ export class RequirementsHandler {
         void vscode.window.showErrorMessage('No workspace folder open.');
         return;
       }
-      const target = await this.reqGen.writeFile(root);
-      const doc = await vscode.workspace.openTextDocument(target);
+      const content = await this.reqGen.generate(root);
+      const doc = await vscode.workspace.openTextDocument({ content, language: 'pip-requirements' });
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
-      void vscode.window.showInformationMessage('✅ requirements.txt generated from imports.');
+      void vscode.window.showInformationMessage('✅ requirements.txt generated from imports. Remember to save it!');
     } catch (err) {
       void vscode.window.showErrorMessage(`Failed to generate requirements: ${String(err)}`);
     }

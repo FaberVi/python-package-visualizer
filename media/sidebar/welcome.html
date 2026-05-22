@@ -610,26 +610,16 @@
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
     </label>
-    <label class="setting-row">
+    <div class="setting-row select-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_LANGUAGE}}</div>
         <div class="setting-desc">{{LOC_LANGUAGE_DESC}}</div>
       </div>
-      <select id="sidebar-lang-select" data-setting="language" style="
-        background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground);
-        border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-        border-radius: 4px;
-        padding: 3px 6px;
-        font-size: 11px;
-        font-family: inherit;
-        cursor: pointer;
-        outline: none;
-      ">
+      <select id="sidebar-lang-select" class="setting-select" data-setting="language">
         <option value="en">English</option>
         <option value="it">Italiano</option>
       </select>
-    </label>
+    </div>
   </div>
 
   <!-- Quick Links -->

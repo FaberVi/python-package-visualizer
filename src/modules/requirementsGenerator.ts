@@ -1,5 +1,4 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
+
 import { Logger } from '../utils/logger.js';
 import { ImportScanner } from './importScanner.js';
 import { PackageScanner } from './packageScanner.js';
@@ -41,10 +40,4 @@ export class RequirementsGenerator {
     return lines.join('\n');
   }
 
-  async writeFile(workspaceRoot: string, filename = 'requirements.txt'): Promise<vscode.Uri> {
-    const content = await this.generate(workspaceRoot);
-    const target = vscode.Uri.file(path.join(workspaceRoot, filename));
-    await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf-8'));
-    return target;
-  }
 }
