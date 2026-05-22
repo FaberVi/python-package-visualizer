@@ -19,6 +19,11 @@ import type { PackageDisplayData, ScanStats, HistoryDisplayEntry } from '../ui/w
 import type { ScannedPackage } from '../modules/packageScanner.js';
 import type { VersionCheckResult } from '../services/versionChecker.js';
 
+/**
+ * Orchestrates extension commands, webview interactions, and background tasks.
+ * Acting as a centralized controller, it ensures low coupling and coordinates actions between
+ * the package scanner, version checker, history cache, webviews, and file synchronizers.
+ */
 export class CommandController {
   private readonly importScanner: ImportScanner;
   private readonly reqSync: RequirementsSync;
@@ -47,6 +52,10 @@ export class CommandController {
     this.setupGen = new SetupScriptGenerator();
   }
 
+  /**
+   * Registers all extension commands and registers the communication channel
+   * with the visualizer sidebar and webview panel to establish the action router.
+   */
   registerAll(): void {
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
@@ -68,6 +77,14 @@ export class CommandController {
       vscode.commands.registerCommand(
         'extension.rollbackPackage',
         (name: string, version: string) => this.rollbackPackage(name, version)
+      ),
+      vscode.commands.registerCommand(
+        'extension.selectManualRequirements',
+        () => this.selectManualRequirements()
+      ),
+      vscode.commands.registerCommand(
+        'extension.clearManualRequirements',
+        () => this.clearManualRequirements()
       )
     );
 
@@ -187,6 +204,12 @@ export class CommandController {
         case 'migrateToPoetry':
           void this.migrateToPoetry();
           break;
+        case 'selectManualRequirements':
+          void this.selectManualRequirements();
+          break;
+        case 'clearManualRequirements':
+          void this.clearManualRequirements();
+          break;
         case 'generateSetupScript': {
           const m = msg as { type: string; format: 'bash' | 'powershell' | 'markdown' };
           void this.generateSetupScript(m.format);
@@ -245,9 +268,47 @@ export class CommandController {
         Promise.all(roots.map(r => this.scanner.scanWorkspace(r))).then(results => results.flat()),
         this.importScanner.scanImports(root),
       ]);
-      const scanned = allScanned;
+      // Deduplicate packages by normalized name and source path
+      const uniqueScanned: ScannedPackage[] = [];
+      const seen = new Set<string>();
+      for (const p of allScanned) {
+        const key = `${p.name.toLowerCase()}::${p.source}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueScanned.push(p);
+        }
+      }
+      const scanned = uniqueScanned;
 
       if (scanned.length === 0) {
+        // Ask the user to select a requirements.txt manually if the automatic detection found nothing (e.g. in mono-repos)
+        const choice = await vscode.window.showInformationMessage(
+          'No Python dependency files were found automatically in the workspace root. Would you like to select a requirements.txt manually?',
+          'Select File...',
+          'Dismiss'
+        );
+
+        if (choice === 'Select File...') {
+          const selectedFiles = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            openLabel: 'Select requirements.txt',
+            filters: {
+              'Python Dependencies': ['txt', 'in', 'toml', 'py', 'cfg', 'Pipfile']
+            }
+          });
+
+          if (selectedFiles && selectedFiles.length > 0) {
+            const selectedPath = selectedFiles[0].fsPath;
+            await this.context.workspaceState.update('pythonPackageVisualizer.manualRequirementsPath', selectedPath);
+            this.logger.info(`Persisted manual requirements path to workspaceState: ${selectedPath}`);
+            // Immediately run the visualizer again to load the selected file
+            void this.showVisualizer();
+            return;
+          }
+        }
+
         this.panel.sendProgress(
           'No packages found. Add a requirements.txt, pyproject.toml, or setup.py.'
         );
@@ -302,6 +363,8 @@ export class CommandController {
       const vulnPkgs = checkResults.filter(r => r.vulnerabilities && r.vulnerabilities.length > 0).length;
       const securityScore = checkResults.length > 0 ? ((checkResults.length - vulnPkgs) / checkResults.length) * 100 : 100;
 
+      const manualRequirementsPath = this.context.workspaceState.get<string>('pythonPackageVisualizer.manualRequirementsPath');
+
       const scanStats: ScanStats = {
         filesScanned: importResult.filesScanned,
         modulesFound: importResult.importedModules.size,
@@ -311,6 +374,7 @@ export class CommandController {
         securityScore,
         maintainerActivityScore: 75, // placeholder
         slowestPackages: [],
+        manualRequirementsPath,
       };
 
       this.lastPackages = scanned;
@@ -613,6 +677,11 @@ export class CommandController {
 
   // ── New Feature Methods ───────────────────────────────────────────────────
 
+  /**
+   * Spawns a process to install a new Python package in the active environment.
+   * If requirements.txt exists, it also appends the installed package specifier to keep
+   * local dependency declarations synchronized.
+   */
   async installNewPackage(packageName: string, version?: string): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root || !packageName.trim()) { return; }
@@ -650,6 +719,10 @@ export class CommandController {
     }
   }
 
+  /**
+   * Performs an asynchronous lookup on the PyPI JSON API for package search.
+   * This provides live feedback inside the UI for users looking up package information before installing.
+   */
   async searchPypi(query: string): Promise<void> {
     if (!query.trim()) { return; }
     try {
@@ -684,6 +757,10 @@ export class CommandController {
     }
   }
 
+  /**
+   * Generates and exports a comprehensive package status report in Markdown or JSON format.
+   * The generated file is opened in a side column to allow convenient review, auditing, or sharing.
+   */
   async exportReport(format: 'markdown' | 'json'): Promise<void> {
     try {
       const root = this.getWorkspaceRoot();
@@ -773,6 +850,10 @@ export class CommandController {
     }
   }
 
+  /**
+   * Pins a package to a specific version inside the target dependency file.
+   * This ensures deterministic installs and is key to resolving version conflicts.
+   */
   async pinVersion(packageName: string, version: string, sourceFile: string): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root || !version) { return; }
@@ -785,6 +866,45 @@ export class CommandController {
     }
   }
 
+  /**
+   * Prompts the user to manually select a requirements.txt file (or other supported dependency file).
+   * This is particularly useful in mono-repo configurations where the file is nested inside a subfolder.
+   */
+  async selectManualRequirements(): Promise<void> {
+    const selectedFiles = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      openLabel: 'Select requirements.txt',
+      filters: {
+        'Python Dependencies': ['txt', 'in', 'toml', 'py', 'cfg', 'Pipfile']
+      }
+    });
+
+    if (selectedFiles && selectedFiles.length > 0) {
+      const selectedPath = selectedFiles[0].fsPath;
+      await this.context.workspaceState.update('pythonPackageVisualizer.manualRequirementsPath', selectedPath);
+      this.logger.info(`Manually selected requirements file path updated: ${selectedPath}`);
+      void vscode.window.showInformationMessage(`Selected manual requirements file: ${selectedPath}`);
+      await this.refreshVisualizer();
+    }
+  }
+
+  /**
+   * Clears the manually selected requirements.txt file path from the workspace state.
+   * After clearing, the extension will revert to standard automatic root detection.
+   */
+  async clearManualRequirements(): Promise<void> {
+    await this.context.workspaceState.update('pythonPackageVisualizer.manualRequirementsPath', undefined);
+    this.logger.info('Cleared manually selected requirements path');
+    void vscode.window.showInformationMessage('Cleared manually selected requirements file.');
+    await this.refreshVisualizer();
+  }
+
+  /**
+   * Bootstraps a default requirements.txt file at the workspace root.
+   * This provides a quick starting point for new Python projects that don't already have dependency management.
+   */
   async createRequirementsFile(): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root) { return; }
@@ -796,6 +916,10 @@ export class CommandController {
     void vscode.window.showInformationMessage('Created requirements.txt — add your packages and refresh.');
   }
 
+  /**
+   * Prompts for confirmation and deletes a package declaration from the specified dependency file.
+   * This allows direct dependency pruning from the visualizer UI.
+   */
   async removeFromRequirements(packageName: string, sourceFile: string): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root) { return; }
@@ -825,6 +949,10 @@ export class CommandController {
     }
   }
 
+  /**
+   * Scans all import statements in the workspace source files and generates a requirements.txt file
+   * mapping only the actually-imported modules. This helps in clean-room environment reconstruction.
+   */
   async generateRequirements(): Promise<void> {
     try {
       const root = this.getWorkspaceRoot();
@@ -841,6 +969,10 @@ export class CommandController {
     }
   }
 
+  /**
+   * Automatically migrates the traditional requirements.txt dependency format to modern uv-based
+   * pyproject.toml PEP 621 configurations.
+   */
   async migrateToUv(): Promise<void> {
     try {
       const root = this.getWorkspaceRoot();
@@ -860,6 +992,10 @@ export class CommandController {
     }
   }
 
+  /**
+   * Automatically migrates traditional requirements.txt dependency lists to modern Poetry-configured
+   * pyproject.toml layouts.
+   */
   async migrateToPoetry(): Promise<void> {
     try {
       const root = this.getWorkspaceRoot();
@@ -879,6 +1015,10 @@ export class CommandController {
     }
   }
 
+  /**
+   * Generates virtual environment bootstrap and package install shell scripts (Bash, PowerShell, Markdown).
+   * This facilitates reproducible project setup and developer onboarding workflows.
+   */
   async generateSetupScript(format: 'bash' | 'powershell' | 'markdown'): Promise<void> {
     try {
       const root = this.getWorkspaceRoot();
@@ -981,7 +1121,7 @@ export class CommandController {
   /** Spawns an install process and streams progress messages to the webview. */
   private runInstallTracked(exe: string, args: string[], cwd: string, packageName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = cp.spawn(exe, args, { cwd, shell: false });
+      const child = cp.spawn(exe, args, { cwd, shell: false }) as any;
 
       const sendProgress = (stage: string, percent: number) => {
         void this.panel.webview?.postMessage({ type: 'pkgProgress', name: packageName, stage, percent });
@@ -1024,7 +1164,7 @@ export class CommandController {
         stderr += text;
         this.logger.warn(text.trim());
       });
-      child.on('close', (code) => {
+      child.on('close', (code: number | null) => {
         if (stdoutBuf) { processLine(stdoutBuf); }
         if (code === 0) {
           sendProgress('Done', 100);

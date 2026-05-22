@@ -3,10 +3,11 @@
   "displayName": "Python Package Visualizer",
   "description": "A VS Code extension to visualize, manage and audit Python workspace dependencies — with version checks, CVE badges, unused package detection, dependency graph, and one-click updates.",
   "version": "3.0.0",
+  "icon": "media/icon.png",
   "publisher": "Elanchezhiyan-P",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.107.0"
   },
   "categories": [
     "Other",
@@ -52,7 +53,8 @@
         {
           "type": "webview",
           "id": "pythonPackageVisualizer.sidebar",
-          "name": "Package Visualizer"
+          "name": "Package Visualizer",
+          "icon": "media/icon.svg"
         }
       ]
     },
@@ -82,6 +84,16 @@
       {
         "command": "extension.rollbackPackage",
         "title": "Rollback Package",
+        "category": "Python Packages"
+      },
+      {
+        "command": "extension.selectManualRequirements",
+        "title": "Select requirements.txt Manually...",
+        "category": "Python Packages"
+      },
+      {
+        "command": "extension.clearManualRequirements",
+        "title": "Clear Manually Selected requirements.txt",
         "category": "Python Packages"
       }
     ],
@@ -117,6 +129,12 @@
         {
           "command": "extension.rollbackPackage",
           "when": "false"
+        },
+        {
+          "command": "extension.selectManualRequirements"
+        },
+        {
+          "command": "extension.clearManualRequirements"
         }
       ]
     },
@@ -147,7 +165,12 @@
         },
         "pythonPackageVisualizer.updateCheckSchedule": {
           "type": "string",
-          "enum": ["off", "daily", "weekly", "monthly"],
+          "enum": [
+            "off",
+            "daily",
+            "weekly",
+            "monthly"
+          ],
           "default": "off",
           "description": "Schedule periodic checks for outdated packages."
         },
@@ -202,15 +225,16 @@
     "@iarna/toml": "^2.2.5"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.6",
-    "@types/node": "^20.0.0",
-    "@types/vscode": "^1.85.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "@vscode/test-electron": "^2.3.8",
-    "@vscode/vsce": "^2.24.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.107.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.4",
+    "@typescript-eslint/parser": "^8.59.4",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.28.0",
-    "mocha": "^7.2.0",
-    "typescript": "^5.3.0"
+    "glob": "^13.0.6",
+    "mocha": "^11.7.6",
+    "typescript": "^6.0.3"
   }
 }

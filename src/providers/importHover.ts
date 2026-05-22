@@ -60,13 +60,11 @@ export class ImportHoverProvider implements vscode.HoverProvider {
     // First check: is this directly an import line?
     const line = document.lineAt(position.line).text;
     let packageName: string | null = null;
-    let symbolKind = '';
 
     const directImport = line.match(/^\s*(?:import|from)\s+([a-zA-Z_][\w.]*)/);
     if (directImport && line.indexOf(directImport[1]) <= position.character &&
         line.indexOf(directImport[1]) + directImport[1].length >= position.character) {
       packageName = this.importScanner.mapToPackageName(directImport[1]);
-      symbolKind = 'module';
     }
 
     // Second check: scan the document for `from X import Y, Z` and check if hoveredWord is in the imported list
@@ -75,7 +73,6 @@ export class ImportHoverProvider implements vscode.HoverProvider {
       const sym = imports.get(hoveredWord);
       if (sym) {
         packageName = sym.packageName;
-        symbolKind = sym.kind;
       }
     }
 
@@ -130,7 +127,7 @@ export class ImportHoverProvider implements vscode.HoverProvider {
 
     try {
       const result = await this.checker.checkPackage(packageName, '');
-      const md = this.buildPackageCard(result, packageName, hoveredWord, symbolKind);
+      const md = this.buildPackageCard(result, packageName);
       return new vscode.Hover(md, wordRange);
     } catch {
       return null;
@@ -143,8 +140,6 @@ export class ImportHoverProvider implements vscode.HoverProvider {
   private buildPackageCard(
     result: import('../services/versionChecker.js').VersionCheckResult,
     packageName: string,
-    hoveredWord: string,
-    symbolKind: string,
   ): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
@@ -224,13 +219,6 @@ export class ImportHoverProvider implements vscode.HoverProvider {
     if (months < 12) { return `${months} month${months !== 1 ? 's' : ''} ago`; }
     const years = Math.floor(days / 365);
     return `${years} year${years !== 1 ? 's' : ''} ago`;
-  }
-
-  /** Format large numbers: 3200000 → "3.2M", 45000 → "45K" */
-  private formatNumber(n: number): string {
-    if (n >= 1_000_000) { return (n / 1_000_000).toFixed(1) + 'M'; }
-    if (n >= 1_000)     { return (n / 1_000).toFixed(1) + 'K'; }
-    return String(n);
   }
 
   /** Scan the document and build a map of "imported symbol name → package info" */

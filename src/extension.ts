@@ -21,7 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
   logger.info('Python Package Visualizer activating...');
 
   try {
-    const scanner      = new PackageScanner(logger);
+    const scanner      = new PackageScanner(logger, context);
     const checker      = new VersionChecker(logger, context);
     const historyCache = new VersionHistoryCache(context, logger);
     const panel        = new WebviewPanel(context, logger);

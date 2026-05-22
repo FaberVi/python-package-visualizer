@@ -336,7 +336,6 @@ export class VersionChecker {
     }
 
     try {
-      const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
       const response = await fetch(`https://api.github.com/repos/python/cpython/releases/latest`, {
         signal: AbortSignal.timeout(5_000),
       });

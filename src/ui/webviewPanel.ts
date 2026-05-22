@@ -34,6 +34,8 @@ export type WebviewMessage =
   | { type: 'generateRequirements' }
   | { type: 'migrateToUv' }
   | { type: 'migrateToPoetry' }
+  | { type: 'selectManualRequirements' }
+  | { type: 'clearManualRequirements' }
   | { type: 'generateSetupScript'; format: 'bash' | 'powershell' | 'markdown' };
 
 export interface ScanStats {
@@ -45,6 +47,7 @@ export interface ScanStats {
   securityScore?: number;
   maintainerActivityScore?: number;
   slowestPackages?: Array<{name: string; time: number}>;
+  manualRequirementsPath?: string;
 }
 
 export interface PackageDisplayData {

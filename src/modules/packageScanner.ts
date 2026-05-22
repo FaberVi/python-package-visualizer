@@ -31,7 +31,14 @@ export class PackageScanner {
   // Cached uv detection: undefined = not checked yet, null = not available, 'uv' = available
   private uvPathPromise: Promise<string | null> | undefined = undefined;
 
-  constructor(private readonly logger: Logger) {}
+  /**
+   * Creates an instance of PackageScanner.
+   * We accept ExtensionContext to access workspaceState for persisted manual requirements file paths.
+   */
+  constructor(
+    private readonly logger: Logger,
+    private readonly context?: vscode.ExtensionContext
+  ) {}
 
   /** Returns 'uv' if uv is available in PATH, null otherwise. Result is cached. */
   public resolveUvPath(cwd: string): Promise<string | null> {
@@ -49,12 +56,18 @@ export class PackageScanner {
       let resolved = false;
       const done = (val: string | null) => { if (!resolved) { resolved = true; resolve(val); } };
       const timer = setTimeout(() => { child.kill(); done(null); }, 5_000);
-      const child = cp.spawn('uv', ['--version'], { cwd });
+      const child = cp.spawn('uv', ['--version'], { cwd }) as any;
       child.on('close', (code: number | null) => { clearTimeout(timer); done(code === 0 ? 'uv' : null); });
       child.on('error', () => { clearTimeout(timer); done(null); });
     });
   }
 
+  /**
+   * Scans the workspace directory to find all Python packages declared in the project's configuration
+   * files (e.g. requirements.txt, pyproject.toml, setup.py), using a specific priority ordering (highest
+   * priority settings override lower ones) so that we can accurately represent the declared dependencies.
+   * This is then overlayed with actual pip/uv installed versions from the active Python environment.
+   */
   async scanWorkspace(workspaceRoot: string): Promise<ScannedPackage[]> {
     this.logger.info(`Scanning workspace: ${workspaceRoot}`);
 
@@ -112,7 +125,17 @@ export class PackageScanner {
       path.join(root, 'requirements-lint.txt'),
       path.join(root, 'lint-requirements.txt'),
     ];
-    return candidates.filter(f => fs.existsSync(f));
+    const files = candidates.filter(f => fs.existsSync(f));
+
+    // Retrieve the manual requirements file path selected by the user to support mono-repo structures
+    if (this.context) {
+      const manualPath = this.context.workspaceState.get<string>('pythonPackageVisualizer.manualRequirementsPath');
+      if (manualPath && fs.existsSync(manualPath) && !files.includes(manualPath)) {
+        files.push(manualPath);
+      }
+    }
+
+    return files;
   }
 
   private getGroupFromFileName(filename: string): 'main' | 'dev' | 'test' | 'docs' | 'lint' {
@@ -570,7 +593,7 @@ export class PackageScanner {
 
     return new Promise((resolve, reject) => {
       this.logger.debug(`Running: ${cmd} ${args.join(' ')}`);
-      const child = cp.spawn(cmd, args, { cwd });
+      const child = cp.spawn(cmd, args, { cwd }) as any;
 
       let stdout = '';
       let timedOut = false;
@@ -625,7 +648,7 @@ export class PackageScanner {
 
     return new Promise((resolve, reject) => {
       this.logger.debug(`Running: ${cmd} ${args.join(' ')}`);
-      const child = cp.spawn(cmd, args, { cwd });
+      const child = cp.spawn(cmd, args, { cwd }) as any;
 
       let stdout = '';
       let stderr = '';
@@ -745,6 +768,11 @@ export class PackageScanner {
     return null;
   }
 
+  /**
+   * Normalizes the package name according to PEP 503 specifications. This is essential to prevent
+   * mismatch issues when comparing package names retrieved from PyPI, pip lists, or requirements files,
+   * since capitalization and delimiter characters (hyphens, underscores, dots) are treated case-insensitively.
+   */
   normalizeName(name: string): string {
     // PEP 503 normalization
     return name.toLowerCase().replace(/[-_.]+/g, '-');
@@ -777,7 +805,7 @@ export class PackageScanner {
     const args = uvPath ? ['pip', 'check'] : ['-m', 'pip', 'check'];
 
     return new Promise(resolve => {
-      const child = cp.spawn(cmd, args, { cwd });
+      const child = cp.spawn(cmd, args, { cwd }) as any;
       let stdout = '';
       let stderr = '';
       const timer = setTimeout(() => { child.kill(); resolve([]); }, 30_000);

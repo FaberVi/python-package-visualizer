@@ -1805,15 +1805,61 @@
       `</div>`;
     }
 
+    const isManual = !!scanStats.manualRequirementsPath;
+    const reqPath = scanStats.manualRequirementsPath || 'Auto-detected dependency files (requirements.txt, pyproject.toml, etc.)';
+
+    const requirementsBannerHtml = `
+      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+        <div style="display:flex;align-items:center;gap:14px;min-width:0;flex:1;">
+          <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;background:${isManual ? 'rgba(74,222,128,.18)' : 'rgba(96,165,250,.18)'};color:${isManual ? '#4ade80' : '#60a5fa'};flex-shrink:0;">
+            ${isManual ? '&#x1F4DD;' : '&#x1F50D;'}
+          </div>
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--vscode-descriptionForeground);">Dependency File Source</div>
+            <div style="font-weight:600;font-size:13px;color:var(--vscode-foreground);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:8px;" title="${esc(reqPath)}">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(reqPath)}</span>
+              <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;background:${isManual ? 'rgba(74,222,128,.18)' : 'rgba(96,165,250,.18)'};color:${isManual ? '#4ade80' : '#60a5fa'};border:1px solid ${isManual ? 'rgba(74,222,128,.35)' : 'rgba(96,165,250,.3)'};">
+                ${isManual ? 'Manual Path' : 'Auto-detected'}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <button id="btn-select-manual-req" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+            &#x1F4C2; Select File
+          </button>
+          ${isManual ? `
+            <button id="btn-clear-manual-req" style="background:transparent;color:var(--vscode-errorForeground,#f87171);border:1px solid var(--vscode-errorForeground,#f87171);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background 0.2s;" onmouseover="this.style.background='rgba(248,113,113,0.1)'" onmouseout="this.style.background='transparent'">
+              &#x274C; Clear Custom Path
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
     elDashboardView.innerHTML = `
       <div style="max-width:1200px;margin:0 auto;width:100%;padding:24px;">
         <div style="font-size:20px;font-weight:700;margin-bottom:4px;color:var(--vscode-foreground);">Workspace Dependency Stats</div>
         <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:24px;">Overview of your Python environment health</div>
+        ${requirementsBannerHtml}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:32px;">${cardHtml}</div>
         <div style="font-size:14px;font-weight:700;color:var(--vscode-foreground);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--vscode-panel-border);">Package Maintainer Activity</div>
         ${maintHtml}
       </div>
     `;
+
+    const btnSelect = elDashboardView.querySelector('#btn-select-manual-req');
+    const btnClear = elDashboardView.querySelector('#btn-clear-manual-req');
+    if (btnSelect) {
+      btnSelect.addEventListener('click', () => {
+        vscode.postMessage({ type: 'selectManualRequirements' });
+      });
+    }
+    if (btnClear) {
+      btnClear.addEventListener('click', () => {
+        vscode.postMessage({ type: 'clearManualRequirements' });
+      });
+    }
   }
 
   // ── Performance Tab (inline styles — bulletproof) ─────────────────────────
