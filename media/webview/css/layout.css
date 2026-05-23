@@ -300,6 +300,7 @@
   animation:     spin .65s linear infinite;
   vertical-align: middle;
   flex-shrink:   0;
+  margin-right:  6px;
 }
 
 /* ── Content Container ───────────────────────────── */

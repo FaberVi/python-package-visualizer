@@ -321,4 +321,5 @@ window.i18n.it = {
   'venv.conflictsDetected': 'Conflitti Rilevati',
   'venv.loading': 'Controllo ambiente…',
   'venv.packages': 'pacchetti',
+  'venv.refresh': 'Scansiona Ambiente',
 };

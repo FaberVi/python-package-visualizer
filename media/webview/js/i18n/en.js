@@ -321,4 +321,5 @@ window.i18n.en = {
   'venv.conflictsDetected': 'Conflicts Detected',
   'venv.loading': 'Checking environment…',
   'venv.packages': 'packages',
+  'venv.refresh': 'Run Diagnostic',
 };

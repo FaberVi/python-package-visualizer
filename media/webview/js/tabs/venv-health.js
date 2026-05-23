@@ -21,9 +21,9 @@ window.renderVenvHealth = function () {
     el.innerHTML = `<div style="max-width:900px;margin:0 auto;padding:24px;width:100%;box-sizing:border-box;">
       <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);margin-bottom:4px;">${window.t('venv.title')}</div>
       <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:24px;">${window.t('venv.subtitle')}</div>
-      <div style="text-align:center;padding:60px 20px;">
-        <div class="loader"></div>
-        <div style="margin-top:16px;font-size:13px;color:var(--vscode-descriptionForeground);">${window.t('venv.loading')}</div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:16px;">
+        <div class="loader" style="margin:0 auto;"></div>
+        <div style="font-size:13px;color:var(--vscode-descriptionForeground);">${window.t('venv.loading')}</div>
       </div>
     </div>`;
     // Request health data from extension host
@@ -196,8 +196,15 @@ window.renderVenvHealth = function () {
 
   el.innerHTML = `
     <div style="max-width:1100px;margin:0 auto;padding:24px;width:100%;box-sizing:border-box;">
-      <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);margin-bottom:4px;">${window.t('venv.title')}</div>
-      <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:20px;">${window.t('venv.subtitle')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:20px;gap:16px;">
+        <div>
+          <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);margin-bottom:4px;">${window.t('venv.title')}</div>
+          <div style="font-size:12px;color:var(--vscode-descriptionForeground);">${window.t('venv.subtitle')}</div>
+        </div>
+        <button id="btn-refresh-venv" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;border-radius:6px;padding:8px 16px;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          🔄 ${window.t('venv.refresh')}
+        </button>
+      </div>
       ${healthBannerHtml}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:24px;">${cardsHtml}</div>
       ${diagnosticsHtml}
@@ -213,6 +220,15 @@ window.renderVenvHealth = function () {
       btnUpdatePip.disabled = true;
       btnUpdatePip.innerHTML = '<span class="btn-spinner"></span>Updating…';
       window.vscode.postMessage({ type: 'updatePip' });
+    });
+  }
+
+  // Wire up refresh button
+  const btnRefresh = el.querySelector('#btn-refresh-venv');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', () => {
+      window.venvHealthReport = null;
+      window.renderVenvHealth();
     });
   }
 };
