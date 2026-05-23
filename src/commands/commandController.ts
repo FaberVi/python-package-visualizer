@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/logger.js';
 import { PackageScanner } from '../modules/packageScanner.js';
+import type { ImportScanner } from '../modules/importScanner.js';
 import { VersionChecker } from '../services/versionChecker.js';
 import { VersionHistoryCache } from '../services/versionHistoryCache.js';
 import { WebviewPanel } from '../ui/webviewPanel.js';
@@ -11,6 +12,7 @@ import { SnapshotManager } from '../services/snapshotManager.js';
 import { RequirementsGenerator } from '../modules/requirementsGenerator.js';
 import { MigrationHelper } from '../modules/migrationHelper.js';
 import { SetupScriptGenerator } from '../modules/setupScriptGenerator.js';
+import { VenvHealthChecker } from '../services/venvHealthChecker.js';
 
 // Import specialized domain handlers using ESM extensions
 import { PackageInstaller } from './handlers/packageInstaller.js';
@@ -34,6 +36,7 @@ export class CommandController {
   private readonly reqGen: RequirementsGenerator;
   private readonly migrationHelper: MigrationHelper;
   private readonly setupGen: SetupScriptGenerator;
+  private readonly venvHealthChecker: VenvHealthChecker;
 
   // Domain command handlers
   private readonly installerHandler: PackageInstaller;
@@ -75,9 +78,13 @@ export class CommandController {
     this.reqGen = new RequirementsGenerator(logger, new (class {
       scanImports() { return Promise.resolve({ filesScanned: 0, importedModules: new Set<string>() }); }
       getUnusedPackages() { return new Set<string>(); }
-    })() as any, scanner); // Kept minimal wrapper or we can use local ref if needed
+      mapToPackageName() { return null; }
+    })() as Pick<ImportScanner, 'scanImports' | 'getUnusedPackages' | 'mapToPackageName'> as ImportScanner, scanner);
     this.migrationHelper = new MigrationHelper(logger, scanner);
     this.setupGen = new SetupScriptGenerator();
+    this.venvHealthChecker = new VenvHealthChecker(
+      () => scanner.resolvePythonPath()
+    );
 
     const getRoot = () => this.getWorkspaceRoot();
     const getAllRoots = () => this.getAllWorkspaceRoots();
@@ -229,6 +236,11 @@ export class CommandController {
           void this.updateAllPackages(m.names);
           break;
         }
+        case 'bulkSync': {
+          const m = msg as { type: string; packages: Array<{ name: string; source: string }> };
+          void this.bulkSyncRequirementsToInstalled(m.packages);
+          break;
+        }
         case 'bulkRemove': {
           const m = msg as { type: string; names: string[]; sources: string[] };
           for (let i = 0; i < m.names.length; i++) {
@@ -273,6 +285,12 @@ export class CommandController {
           void this.syncRequirementsToInstalled(m.name, m.source);
           break;
         }
+        case 'requestVenvHealth':
+          void this.handleVenvHealthRequest();
+          break;
+        case 'updatePip':
+          void this.handleUpdatePip();
+          break;
       }
     });
 
@@ -343,6 +361,10 @@ export class CommandController {
     await this.requirementsHandler.syncRequirementsToInstalled(packageName, sourceFile, this.lastPackages);
   }
 
+  async bulkSyncRequirementsToInstalled(packages: Array<{ name: string; source: string }>): Promise<void> {
+    await this.requirementsHandler.bulkSyncRequirementsToInstalled(packages, this.lastPackages);
+  }
+
   async selectManualRequirements(): Promise<void> {
     await this.requirementsHandler.selectManualRequirements();
   }
@@ -377,6 +399,28 @@ export class CommandController {
     if (this.panel.isVisible() || this.sidebar?.isVisible()) {
       await this.visualizerHandler.showVisualizer();
     }
+  }
+
+  private async handleVenvHealthRequest(): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root) { return; }
+    try {
+      const report = await this.venvHealthChecker.checkHealth(root);
+      this.panel.sendVenvHealth(report);
+    } catch {
+      // Non-blocking: silently ignore venv health failures
+    }
+  }
+
+  private async handleUpdatePip(): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root) { return; }
+    const { exec } = await import('child_process');
+    exec('python -m pip install --upgrade pip', { cwd: root }, (err) => {
+      if (!err) {
+        void this.handleVenvHealthRequest(); // Refresh report after pip update
+      }
+    });
   }
 
   private getWorkspaceRoot(): string | null {

@@ -400,6 +400,40 @@
       flex-shrink: 0;
     }
     .select-row { cursor: default; }
+
+    /* ── Drift Stat Box ────────────────── */
+    #drift-stat-box {
+      margin: 10px 16px 0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+    #drift-stat-box.visible {
+      display: flex;
+    }
+    #drift-stat-box.warning {
+      background: rgba(251,146,60,.08);
+      color: #fb923c;
+      border: 1px dashed rgba(251,146,60,.5);
+    }
+    #drift-stat-box.ok {
+      background: rgba(74,222,128,.08);
+      color: #4ade80;
+      border: 1px dashed rgba(74,222,128,.5);
+    }
+    .drift-icon {
+      font-size: 13px;
+    }
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
@@ -427,6 +461,11 @@
       <span class="ls-lbl">{{LOC_STATS_VULNERABLE}}</span>
     </div>
   </div>
+
+  <!-- Drift Box -->
+  <div id="drift-stat-box"></div>
+  <span id="txt-stats-drifted" class="hidden">{{LOC_STATS_DRIFTED}}</span>
+  <span id="txt-stats-all-aligned" class="hidden">{{LOC_STATS_ALL_ALIGNED}}</span>
 
   <!-- CTA -->
   <div class="cta">
@@ -681,106 +720,6 @@
 
   <div class="footer">{{LOC_FOOTER_LICENSE}} &nbsp;·&nbsp; Python Package Visualizer v{{VERSION}}</div>
 
-  <script nonce="{{NONCE}}">
-    const vscode = acquireVsCodeApi();
-    function openUrl(url) { vscode.postMessage({ type: 'openUrl', url }); }
-
-    document.getElementById('btn-open').addEventListener('click', () =>
-      vscode.postMessage({ type: 'openPanel' }));
-
-    document.getElementById('link-docs').addEventListener('click', () =>
-      openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer#readme'));
-    document.getElementById('link-changelog').addEventListener('click', () =>
-      openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer/blob/main/CHANGELOG.md'));
-    document.getElementById('link-issue').addEventListener('click', () =>
-      openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer/issues/new'));
-    document.getElementById('link-star').addEventListener('click', () =>
-      openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer'));
-    document.getElementById('link-portfolio').addEventListener('click', () =>
-      openUrl('https://codebyelan.in'));
-    document.getElementById('link-github-author').addEventListener('click', () =>
-      openUrl('https://github.com/Elanchezhiyan-P'));
-    document.getElementById('link-linkedin').addEventListener('click', () =>
-      openUrl('https://www.linkedin.com/in/elanchezhiyan-p/'));
-
-    // ── Settings ─────────────────────────────────────────
-    const settingsState = {
-      showImportCodeLens: true,
-      showImportHover: true,
-      autoCheckOnOpen: true,
-      notifyOnOutdated: true,
-      updateCheckSchedule: 'off',
-      showFunctionMetrics: true,
-      showMethodCallHover: true,
-      showComplexityWarnings: true,
-      showTypeHintCoverage: true,
-      showDocstringWarnings: true,
-    };
-
-    // Request current settings from extension
-    vscode.postMessage({ type: 'getSettings' });
-
-    // Apply settings to UI
-    function applySettings(s) {
-      Object.assign(settingsState, s);
-      document.querySelectorAll('.toggle-switch').forEach(el => {
-        const key = el.dataset.setting;
-        if (settingsState[key]) el.classList.add('on');
-        else el.classList.remove('on');
-      });
-      document.querySelectorAll('.setting-select').forEach(el => {
-        const key = el.dataset.setting;
-        if (settingsState[key]) el.value = settingsState[key];
-      });
-      // Language selector
-      const langSel = document.getElementById('sidebar-lang-select');
-      if (langSel && settingsState.language) { langSel.value = settingsState.language; }
-    }
-
-    // Toggle handler
-    document.querySelectorAll('.toggle-switch').forEach(el => {
-      el.addEventListener('click', () => {
-        const key = el.dataset.setting;
-        const newVal = !settingsState[key];
-        settingsState[key] = newVal;
-        if (newVal) el.classList.add('on');
-        else el.classList.remove('on');
-        vscode.postMessage({ type: 'updateSetting', key, value: newVal });
-      });
-    });
-
-    // Select handler
-    document.querySelectorAll('.setting-select').forEach(el => {
-      el.addEventListener('change', () => {
-        const key = el.dataset.setting;
-        const value = el.value;
-        settingsState[key] = value;
-        vscode.postMessage({ type: 'updateSetting', key, value });
-      });
-    });
-
-    // Language selector handler
-    const langSelect = document.getElementById('sidebar-lang-select');
-    if (langSelect) {
-      langSelect.addEventListener('change', () => {
-        const value = langSelect.value;
-        settingsState.language = value;
-        vscode.postMessage({ type: 'updateSetting', key: 'language', value });
-      });
-    }
-
-    window.addEventListener('message', event => {
-      const msg = event.data;
-      if (msg.type === 'sidebarStats') {
-        document.getElementById('ls-ok').textContent     = msg.ok;
-        document.getElementById('ls-update').textContent = msg.updates;
-        document.getElementById('ls-vuln').textContent   = msg.vulnerable;
-        document.getElementById('live-stats').classList.add('visible');
-      }
-      if (msg.type === 'settings') {
-        applySettings(msg.settings);
-      }
-    });
-  </script>
+  <script nonce="{{NONCE}}" src="{{WELCOME_JS_URI}}"></script>
 </body>
 </html>

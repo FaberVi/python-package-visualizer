@@ -2,7 +2,7 @@
   "name": "python-package-visualizer",
   "displayName": "Python Package Visualizer",
   "description": "A VS Code extension to visualize, manage and audit Python workspace dependencies — with version checks, CVE badges, unused package detection, dependency graph, and one-click updates.",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "icon": "media/icon.png",
   "publisher": "Elanchezhiyan-P",
   "license": "MIT",
@@ -231,7 +231,7 @@
     "watch": "node esbuild.js --watch",
     "pretest": "tsc -p tsconfig.test.json",
     "test": "node ./out-test/test/runTests.js",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "package": "vsce package"
   },
   "dependencies": {

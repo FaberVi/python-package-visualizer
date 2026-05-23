@@ -61,7 +61,7 @@ export class PackageScanner {
       let resolved = false;
       const done = (val: string | null) => { if (!resolved) { resolved = true; resolve(val); } };
       const timer = setTimeout(() => { child.kill(); done(null); }, 5_000);
-      const child = cp.spawn('uv', ['--version'], { cwd }) as any;
+      const child = cp.spawn('uv', ['--version'], { cwd });
       child.on('close', (code: number | null) => { clearTimeout(timer); done(code === 0 ? 'uv' : null); });
       child.on('error', () => { clearTimeout(timer); done(null); });
     });
@@ -201,7 +201,7 @@ export class PackageScanner {
 
     return new Promise((resolve, reject) => {
       this.logger.debug(`Running: ${cmd} ${args.join(' ')}`);
-      const child = cp.spawn(cmd, args, { cwd }) as any;
+      const child = cp.spawn(cmd, args, { cwd });
 
       let stdout = '';
       let timedOut = false;
@@ -256,7 +256,7 @@ export class PackageScanner {
 
     return new Promise((resolve, reject) => {
       this.logger.debug(`Running: ${cmd} ${args.join(' ')}`);
-      const child = cp.spawn(cmd, args, { cwd }) as any;
+      const child = cp.spawn(cmd, args, { cwd });
 
       let stdout = '';
       let stderr = '';
@@ -413,7 +413,7 @@ export class PackageScanner {
     const args = uvPath ? ['pip', 'check'] : ['-m', 'pip', 'check'];
 
     return new Promise(resolve => {
-      const child = cp.spawn(cmd, args, { cwd }) as any;
+      const child = cp.spawn(cmd, args, { cwd });
       let stdout = '';
       let stderr = '';
       const timer = setTimeout(() => { child.kill(); resolve([]); }, 30_000);

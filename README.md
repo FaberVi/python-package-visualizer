@@ -4,7 +4,7 @@
 
 **The ultimate dependency manager for Python projects in VS Code**
 
-![Version](https://img.shields.io/badge/version-3.0.1-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.0.2-blue?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![VS Code](https://img.shields.io/badge/vscode-%5E1.85.0-007ACC?style=flat-square&logo=visualstudiocode)
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python)
@@ -180,7 +180,7 @@ Inside the Package Visualizer panel:
 
 ---
 
-## 🎯 What's New in v3.0.1
+## 🎯 What's New in v3.0.2
 
 - 📝 **Import Annotations** above every import line with Update/Install quick actions
 - 📊 **Function Metrics** (lines, references, complexity) above every `def`
@@ -226,7 +226,170 @@ Virtual environments are auto-detected from: `.venv/`, `venv/`, `env/`, `.env/`.
 
 ### From VSIX
 ```bash
-code --install-extension python-package-visualizer-3.0.1.vsix
+code --install-extension python-package-visualizer-3.0.2.vsix
+```
+
+---
+
+## 🏗️ Development
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) **v18+**
+- [npm](https://www.npmjs.com/) (bundled with Node.js)
+- [VS Code](https://code.visualstudio.com/) **^1.107.0**
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Elanchezhiyan-P/python-package-visualizer.git
+cd python-package-visualizer
+
+# Install dependencies
+npm install
+```
+
+### Build Commands
+
+| Command | Description |
+|---|---|
+| `npm run build` | Compile TypeScript → `dist/extension.js` via esbuild |
+| `npm run watch` | Compile in watch mode (auto-rebuild on save) |
+| `npm run lint` | Run ESLint on `src/` |
+| `npm run pretest` | Compile test files via `tsc` |
+| `npm run test` | Run extension tests with `@vscode/test-electron` |
+| `npm run package` | Package the extension as `.vsix` via `vsce` |
+
+### Typical Development Workflow
+
+```bash
+# 1. Start watch mode (keeps rebuilding on save)
+npm run watch
+
+# 2. Press F5 in VS Code to launch the Extension Development Host
+
+# 3. Make changes → the watcher rebuilds automatically
+#    Reload the dev host window (Ctrl+Shift+P → "Developer: Reload Window")
+
+# 4. Before committing, verify a clean build
+npm run build
+
+# 5. Run linter
+npm run lint
+
+# 6. Package for distribution
+npm run package
+```
+
+### Packaging a VSIX
+
+```bash
+# Install vsce globally (if not already)
+npm install -g @vscode/vsce
+
+# Package the extension
+vsce package
+# → produces python-package-visualizer-X.Y.Z.vsix
+
+# Install locally for testing
+code --install-extension python-package-visualizer-*.vsix
+```
+
+### Project Structure
+
+```
+python-package-visualizer/
+├── src/                          # TypeScript source (compiled by esbuild)
+│   ├── extension.ts              # Extension entry point (activate/deactivate)
+│   ├── commands/
+│   │   ├── commandController.ts  # Central command dispatcher
+│   │   └── handlers/
+│   │       ├── visualizerHandler.ts   # Core scan + update orchestration
+│   │       ├── visualizer/
+│   │       │   └── displayCompiler.ts # Payload building (shared by panel + sidebar)
+│   │       ├── packageInstaller.ts    # pip install/update/rollback
+│   │       ├── requirementsHandler.ts # Requirements file operations
+│   │       ├── reportExporter.ts      # Markdown/JSON export
+│   │       ├── snapshotHandler.ts     # Environment snapshots
+│   │       ├── migrationHandler.ts    # uv/Poetry migration
+│   │       └── utilityHandler.ts      # Misc utilities
+│   ├── modules/
+│   │   ├── importScanner.ts      # Facade — delegates to import/ sub-modules
+│   │   ├── import/
+│   │   │   ├── scanner.ts        # Python file scanning + import extraction
+│   │   │   ├── confidence.ts     # Unused package confidence scoring
+│   │   │   └── maps.ts           # stdlib, import-to-package mappings
+│   │   ├── packageScanner.ts     # Requirements/pyproject/setup.py parser
+│   │   ├── parsers/              # Format-specific parsers
+│   │   ├── requirementsSync.ts   # Pin/unpin/remove from requirements
+│   │   ├── requirementsGenerator.ts
+│   │   ├── migrationHelper.ts
+│   │   └── setupScriptGenerator.ts
+│   ├── services/
+│   │   ├── versionChecker.ts     # PyPI API queries
+│   │   └── versionHistoryCache.ts # Local JSON history store
+│   ├── providers/                # CodeLens, Hover, and Diagnostics providers
+│   ├── ui/
+│   │   ├── webviewPanel.ts       # Main webview panel manager
+│   │   ├── sidebarProvider.ts    # Activity bar sidebar
+│   │   └── statusBarManager.ts   # Status bar item
+│   ├── data/                     # Static data (alternatives, API costs)
+│   └── utils/                    # Logger, helpers
+├── media/
+│   ├── webview/
+│   │   ├── index.html            # Main webview HTML template
+│   │   ├── main.js               # Webview entry point
+│   │   ├── js/
+│   │   │   ├── state.js          # Global state management
+│   │   │   ├── utils.js          # Shared utilities (esc, formatters)
+│   │   │   ├── i18n.js           # i18n engine + static translations
+│   │   │   ├── i18n/             # Language packs (en.js, it.js)
+│   │   │   ├── filters.js        # Search, sort, filter logic
+│   │   │   ├── table.js          # Package list table renderer
+│   │   │   ├── tabs.js           # Tab router + shared tab utilities
+│   │   │   ├── tabs/             # Per-tab renderers
+│   │   │   │   ├── dashboard.js
+│   │   │   │   ├── unused.js
+│   │   │   │   ├── licenses.js
+│   │   │   │   ├── performance.js
+│   │   │   │   ├── history.js
+│   │   │   │   └── snapshots.js
+│   │   │   ├── detail.js         # Package detail side panel
+│   │   │   ├── graph.js          # D3.js dependency graph
+│   │   │   ├── modal.js          # Modal dialogs
+│   │   │   └── tour.js           # Guided tour
+│   │   └── css/
+│   │       ├── base.css          # CSS custom properties + reset
+│   │       ├── layout.css        # Header, toolbar, stats bar
+│   │       ├── components.css    # Buttons, badges, tags, banners
+│   │       ├── components/       # Extracted component styles
+│   │       │   ├── loader.css
+│   │       │   ├── empty-state.css
+│   │       │   ├── modal.css
+│   │       │   ├── export-menu.css
+│   │       │   └── tour.css
+│   │       ├── list-view.css     # Package table styles
+│   │       ├── detail-view.css   # Detail panel styles
+│   │       ├── graph-view.css    # Graph visualization styles
+│   │       ├── tabs-view.css     # Tab bar controls
+│   │       └── tabs/             # Per-tab styles
+│   │           ├── dashboard.css
+│   │           ├── unused.css
+│   │           ├── licenses.css
+│   │           ├── performance.css
+│   │           ├── history.css
+│   │           └── snapshots.css
+│   └── sidebar/
+│       ├── welcome.html          # Sidebar HTML template
+│       └── welcome.js            # Sidebar settings + event handlers
+├── test/                         # Extension integration tests
+├── dist/                         # Compiled output (gitignored)
+├── esbuild.js                    # Build script configuration
+├── tsconfig.json                 # TypeScript compiler config
+├── tsconfig.test.json            # Test-specific TS config
+├── package.json                  # Extension manifest + npm scripts
+└── .vscodeignore                 # Files excluded from VSIX package
 ```
 
 ---
@@ -238,6 +401,8 @@ Issues and pull requests are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 - 🐛 **Bug reports:** [GitHub Issues](https://github.com/Elanchezhiyan-P/python-package-visualizer/issues)
 - 💡 **Feature requests:** same place — use the `enhancement` label
 - 📖 **Documentation:** [GitHub Wiki](https://github.com/Elanchezhiyan-P/python-package-visualizer/wiki)
+
+> **Before submitting a PR**, make sure `npm run build` and `npm run lint` pass cleanly.
 
 ---
 

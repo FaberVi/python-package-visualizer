@@ -1,13 +1,18 @@
 import * as vscode from 'vscode';
 import { Logger } from '../../utils/logger.js';
+import { hasDrift } from '../../utils/version.js';
 import { PackageScanner, ScannedPackage } from '../../modules/packageScanner.js';
 import { ImportScanner } from '../../modules/importScanner.js';
 import { VersionChecker, VersionCheckResult } from '../../services/versionChecker.js';
 import { VersionHistoryCache } from '../../services/versionHistoryCache.js';
-import { WebviewPanel, PackageDisplayData, ScanStats, HistoryDisplayEntry } from '../../ui/webviewPanel.js';
+import { WebviewPanel, ScanStats } from '../../ui/webviewPanel.js';
 import { SidebarProvider } from '../../ui/sidebarProvider.js';
 import { StatusBarManager } from '../../ui/statusBarManager.js';
-import { getAlternatives } from '../../data/alternativesMap.js';
+import {
+  buildDisplayData,
+  buildConfidenceContext,
+  buildHistoryEntries
+} from './visualizer/displayCompiler.js';
 
 /**
  * Handles core workspace package scanning, update checks, auto checks,
@@ -90,7 +95,9 @@ export class VisualizerHandler {
         );
 
         if (choice === 'Select File...') {
+          const defaultUri = root ? vscode.Uri.file(root) : undefined;
           const selectedFiles = await vscode.window.showOpenDialog({
+            defaultUri,
             canSelectFiles: true,
             canSelectFolders: false,
             canSelectMany: false,
@@ -123,6 +130,8 @@ export class VisualizerHandler {
       const checkResults = await this.checker.checkAll(
         scanned.map(p => ({ name: p.name, installedVersion: p.installedVersion }))
       );
+
+      this.applyDriftStatus(scanned, checkResults);
 
       // Fetch weekly downloads in batches (non-blocking) to prevent PyPI Stats API rate-limiting or timing out
       const downloadsMap = new Map<string, number>();
@@ -162,9 +171,10 @@ export class VisualizerHandler {
         }
       }
 
-      const unusedPackages = this.importScanner.getUnusedPackages(
+      const unusedPackages = this.importScanner.getUnusedPackagesWithConfidence(
         scanned.map(p => p.name),
-        mergedImportedModules
+        mergedImportedModules,
+        buildConfidenceContext(scanned, checkResults)
       );
 
       this.logger.info(
@@ -212,11 +222,11 @@ export class VisualizerHandler {
       });
 
       // Update history list and sidebar payload
-      const historyEntries = this.buildHistoryEntries(root);
+      const historyEntries = buildHistoryEntries(this.history.getFullHistory(root));
       this.panel.sendHistory(historyEntries);
 
       if (this.sidebar) {
-        const displayData = this.buildDisplayData(scanned, checkResults, unusedPackages);
+        const displayData = buildDisplayData(scanned, checkResults, unusedPackages);
         this.sidebar.sendPackages(displayData, scanStats, 'init');
       }
 
@@ -279,6 +289,8 @@ export class VisualizerHandler {
             }))
           );
 
+          this.applyDriftStatus(scanned, checkResults);
+
           this.updateStatusBar(checkResults);
 
           // Compile imports from all workspace folders
@@ -289,9 +301,10 @@ export class VisualizerHandler {
             }
           }
 
-          const unusedPackages = this.importScanner.getUnusedPackages(
+          const unusedPackages = this.importScanner.getUnusedPackagesWithConfidence(
             scanned.map(p => p.name),
-            mergedImportedModules
+            mergedImportedModules,
+            buildConfidenceContext(scanned, checkResults)
           );
 
           if (this.panel.isVisible()) {
@@ -299,7 +312,7 @@ export class VisualizerHandler {
           }
 
           if (this.sidebar?.isVisible()) {
-            const displayData = this.buildDisplayData(scanned, checkResults, unusedPackages);
+            const displayData = buildDisplayData(scanned, checkResults, unusedPackages);
             this.sidebar.sendPackages(displayData, undefined, 'update');
           }
 
@@ -365,6 +378,8 @@ export class VisualizerHandler {
         scanned.map(p => ({ name: p.name, installedVersion: p.installedVersion }))
       );
 
+      this.applyDriftStatus(scanned, checkResults);
+
       this.updateStatusBar(checkResults);
 
       const outdated = checkResults.filter(r => r.status === 'update-available');
@@ -392,14 +407,22 @@ export class VisualizerHandler {
     }
   }
 
-  private buildHistoryEntries(root: string): HistoryDisplayEntry[] {
-    const allEntries = this.history.getFullHistory(root);
-    return allEntries.map(e => ({
-      packageName: e.packageName,
-      version: e.version,
-      installedAt: e.installedAt,
-      source: e.source,
-    }));
+  private applyDriftStatus(
+    scanned: ScannedPackage[],
+    checkResults: VersionCheckResult[]
+  ): void {
+    const scannedMap = new Map(scanned.map(p => [p.name.toLowerCase(), p]));
+    for (const r of checkResults) {
+      const pkg = scannedMap.get(r.packageName.toLowerCase());
+      if (
+        pkg?.specifiedVersion &&
+        pkg.installedVersion &&
+        r.status === 'up-to-date' &&
+        hasDrift(pkg.specifiedVersion, pkg.installedVersion)
+      ) {
+        r.status = 'drift';
+      }
+    }
   }
 
   private updateStatusBar(checkResults: VersionCheckResult[]): void {
@@ -409,38 +432,5 @@ export class VisualizerHandler {
     const outdated = checkResults.filter(r => r.status === 'update-available').length;
     const vulnerable = checkResults.filter(r => r.vulnerabilities && r.vulnerabilities.length > 0).length;
     this.statusBar.update(outdated, vulnerable, checkResults.length);
-  }
-
-  private buildDisplayData(
-    scanned: ScannedPackage[],
-    checkResults: VersionCheckResult[],
-    unusedPackages?: Set<string>
-  ): PackageDisplayData[] {
-    const resultMap = new Map(checkResults.map(r => [r.packageName, r]));
-    return scanned.map(pkg => {
-      const result = resultMap.get(pkg.name);
-      const normName = pkg.name.toLowerCase().replace(/[-_.]+/g, '-');
-      return {
-        name: pkg.name,
-        installedVersion: pkg.installedVersion,
-        latestVersion: result?.latestVersion ?? 'unknown',
-        status: result?.status ?? 'unknown',
-        allVersions: result?.allVersions ?? [],
-        summary: result?.summary ?? '',
-        homePage: result?.homePage ?? '',
-        specifiedVersion: pkg.specifiedVersion,
-        source: pkg.source,
-        requires: pkg.requires,
-        isUsed: unusedPackages ? !unusedPackages.has(normName) : true,
-        vulnerabilities: result?.vulnerabilities ?? [],
-        releaseDate: result?.releaseDate ?? '',
-        group: pkg.group ?? 'main',
-        license: result?.license ?? '',
-        pythonRequires: result?.pythonRequires ?? '',
-        weeklyDownloads: result?.weeklyDownloads ?? 0,
-        installSize: result?.installSize,
-        alternatives: getAlternatives(pkg.name),
-      };
-    });
   }
 }

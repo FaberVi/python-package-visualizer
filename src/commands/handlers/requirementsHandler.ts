@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '../../utils/logger.js';
+import { hasDrift } from '../../utils/version.js';
 import { RequirementsSync } from '../../modules/requirementsSync.js';
 import { RequirementsGenerator } from '../../modules/requirementsGenerator.js';
 import { ScannedPackage } from '../../modules/packageScanner.js';
@@ -73,6 +74,66 @@ export class RequirementsHandler {
       }
     } catch (err) {
       void vscode.window.showErrorMessage(`Failed to sync ${packageName}: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Aligns the requirement pin version with the currently installed version for multiple packages in bulk.
+   * Only syncs packages whose specified version actually diverges from the installed version (drift check).
+   */
+  async bulkSyncRequirementsToInstalled(
+    packages: Array<{ name: string; source: string }>,
+    lastPackages: ScannedPackage[]
+  ): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root || packages.length === 0) {
+      return;
+    }
+
+    const lang = vscode.workspace
+      .getConfiguration('pythonPackageVisualizer')
+      .get<string>('language', 'en');
+    const isIt = lang === 'it';
+
+    try {
+      let syncedCount = 0;
+      for (const p of packages) {
+        const scanned = lastPackages.find(
+          lp => lp.name.toLowerCase() === p.name.toLowerCase()
+        );
+        const installedVersion = scanned?.installedVersion;
+        if (!installedVersion) {
+          continue;
+        }
+
+        // Q-2: Verify drift before syncing — skip packages already aligned
+        if (!scanned.specifiedVersion || !hasDrift(scanned.specifiedVersion, installedVersion)) {
+          continue;
+        }
+
+        const synced = await this.reqSync.syncVersion(root, p.name, installedVersion, p.source);
+        if (synced) {
+          syncedCount++;
+        }
+      }
+
+      if (syncedCount > 0) {
+        const msg = isIt
+          ? `🔗 Allineati ${syncedCount} pacchetto/i con le versioni installate.`
+          : `🔗 Aligned ${syncedCount} package(s) with installed versions.`;
+        void vscode.window.showInformationMessage(msg);
+        await this.refreshCallback();
+      } else {
+        const msg = isIt
+          ? 'Nessun pacchetto da allineare.'
+          : 'No packages could be aligned.';
+        void vscode.window.showWarningMessage(msg);
+      }
+    } catch (err) {
+      const msg = isIt
+        ? `Errore nell'allineamento dei pacchetti: ${String(err)}`
+        : `Failed to align packages: ${String(err)}`;
+      void vscode.window.showErrorMessage(msg);
     }
   }
 
@@ -151,7 +212,10 @@ export class RequirementsHandler {
    * Prompts the user to manually select a requirements.txt file.
    */
   async selectManualRequirements(): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    const defaultUri = root ? vscode.Uri.file(root) : undefined;
     const selectedFiles = await vscode.window.showOpenDialog({
+      defaultUri,
       canSelectFiles: true,
       canSelectFolders: false,
       canSelectMany: false,

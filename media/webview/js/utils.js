@@ -65,6 +65,19 @@ window.isMajorJump = function (installed, latest) {
 };
 
 /**
+ * Extracts the pinned version string from a PEP 440 version constraint.
+ * Centralizes the constraint parsing regex to avoid duplication across modules.
+ * 
+ * @param {string} specifiedVersion - The raw constraint string (e.g. "==1.2.3", ">=2.0").
+ * @returns {string|null} The extracted version string, or null if no version could be parsed.
+ */
+window.extractPinnedVersion = function (specifiedVersion) {
+  if (!specifiedVersion) return null;
+  const m = specifiedVersion.match(/[=!<>~^]+\s*([\d][^\s,;]*)/);
+  return m ? m[1] : null;
+};
+
+/**
  * Identifies package version drift where the installed package version
  * does not match the exact pin or constraint in requirements.txt.
  * 
@@ -73,11 +86,9 @@ window.isMajorJump = function (installed, latest) {
  */
 window.computeDrift = function (packages) {
   return packages.filter(pkg => {
-    if (!pkg.specifiedVersion || !pkg.installedVersion) return false;
-    const m = pkg.specifiedVersion.match(/[=!<>~^]+\s*([\d][^\s,;]*)/);
-    if (!m) return false;
-    const pinned = m[1];
-    return pinned !== pkg.installedVersion;
+    if (!pkg.installedVersion) return false;
+    const pinned = window.extractPinnedVersion(pkg.specifiedVersion);
+    return pinned !== null && pinned !== pkg.installedVersion;
   });
 };
 
@@ -89,9 +100,7 @@ window.computeDrift = function (packages) {
  * @returns {string} The extracted pinned version or specified version placeholder.
  */
 window.getDriftReqVersion = function (pkg) {
-  if (!pkg.specifiedVersion) return '?';
-  const m = pkg.specifiedVersion.match(/[=!<>~^]+\s*([\d][^\s,;]*)/);
-  return m ? m[1] : pkg.specifiedVersion;
+  return window.extractPinnedVersion(pkg.specifiedVersion) || pkg.specifiedVersion || '?';
 };
 
 /**
@@ -180,6 +189,7 @@ window.statusBadge = function (status) {
     'up-to-date':       window.t('status.upToDate'),
     'update-available': window.t('status.updateAvailable'),
     'not-installed':    window.t('status.notInstalled'),
+    'drift':            window.t('status.drift'),
     'unknown':          window.t('status.unknown'),
   };
   return `<span class="badge ${window.esc(status || 'unknown')}">${labels[status] || window.t('status.unknown')}</span>`;

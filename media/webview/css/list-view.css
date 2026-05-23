@@ -56,8 +56,23 @@ th .th-inner:hover {
 th.sorted .th-inner {
   color: var(--vscode-foreground);
 }
-th:not([data-col]) .th-inner { cursor: default; }
 th:not([data-col]) .th-inner:hover { background: none; }
+
+.col-help {
+  opacity: .55;
+  font-size: 9px;
+  cursor: help;
+  margin-left: 4px;
+  font-weight: normal;
+  display: inline-block;
+  vertical-align: super;
+  transition: opacity var(--ease), color var(--ease);
+  color: var(--vscode-descriptionForeground);
+}
+.col-help:hover {
+  opacity: 1;
+  color: var(--vscode-foreground);
+}
 
 /* Sort icon */
 .sort-icon {

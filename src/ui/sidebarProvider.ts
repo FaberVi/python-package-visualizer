@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { Logger } from '../utils/logger.js';
+import { getNonce } from '../utils/nonce.js';
 import type { PackageDisplayData, ScanStats, WebviewMessage } from './webviewPanel.js';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
@@ -21,13 +22,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.view = webviewView;
 
     webviewView.webview.options = { enableScripts: true };
-    webviewView.webview.html = this.getWelcomeHtml();
+    webviewView.webview.html = this.getWelcomeHtml(webviewView.webview);
 
     // Listen to global configuration changes to instantly hot-reload the translated sidebar view if the language changes.
     const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('pythonPackageVisualizer.language')) {
         if (this.view) {
-          this.view.webview.html = this.getWelcomeHtml();
+          this.view.webview.html = this.getWelcomeHtml(this.view.webview);
         }
       }
     });
@@ -83,7 +84,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const ok       = packages.filter(p => p.status === 'up-to-date').length;
     const updates  = packages.filter(p => p.status === 'update-available').length;
     const vulnerable = packages.filter(p => p.vulnerabilities && p.vulnerabilities.length > 0).length;
-    void this.view.webview.postMessage({ type: 'sidebarStats', ok, updates, vulnerable });
+    const drifted = packages.filter(p => p.status === 'drift').length;
+    void this.view.webview.postMessage({ type: 'sidebarStats', ok, updates, vulnerable, drifted });
   }
   sendProgress(_message: string): void {}
 
@@ -95,13 +97,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * Generates the welcome sidebar HTML content with dynamic localized translation values.
    * We perform template interpolation at runtime to support instant interface changes when toggling language settings.
    */
-  private getWelcomeHtml(): string {
+  private getWelcomeHtml(webview: vscode.Webview): string {
     const nonce = getNonce();
     const version: string = (this._context.extension.packageJSON as { version: string }).version;
     const templatePath = path.join(this._context.extensionPath, 'media', 'sidebar', 'welcome.html');
     try {
       let html = fs.readFileSync(templatePath, 'utf8');
       
+      const welcomeJsUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this._context.extensionUri, 'media', 'sidebar', 'welcome.js')
+      );
+
       const config = vscode.workspace.getConfiguration('pythonPackageVisualizer');
       const lang = config.get<string>('language', 'en') === 'it' ? 'it' : 'en';
       const dict = TRANSLATIONS[lang];
@@ -109,7 +115,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       // Interpolate generic workspace assets tokens
       html = html
         .replace(/{{NONCE}}/g, nonce)
-        .replace(/{{VERSION}}/g, version);
+        .replace(/{{VERSION}}/g, version)
+        .replace(/{{WELCOME_JS_URI}}/g, welcomeJsUri.toString());
 
       // Interpolate localized strings by looking up predefined token mappings
       for (const [key, value] of Object.entries(dict)) {
@@ -125,14 +132,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 }
 
-function getNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let nonce = '';
-  for (let i = 0; i < 32; i++) {
-    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return nonce;
-}
+
 
 /**
  * Localized string dictionaries for sidebar textual content.
@@ -146,6 +146,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     stats_uptodate: "Up to date",
     stats_updates: "Updates",
     stats_vulnerable: "Vulnerable",
+    stats_drifted: "Out of sync: {count}",
+    stats_all_aligned: "All in sync",
     btn_open: "Open Package Visualizer",
     shortcut_prefix: "Ctrl",
     shortcut_plus: "+",
@@ -217,6 +219,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     stats_uptodate: "Aggiornati",
     stats_updates: "Aggiornamenti",
     stats_vulnerable: "Vulnerabili",
+    stats_drifted: "Non allineati: {count}",
+    stats_all_aligned: "Tutti allineati",
     btn_open: "Apri Package Visualizer",
     shortcut_prefix: "Ctrl",
     shortcut_plus: "+",

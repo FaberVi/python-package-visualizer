@@ -231,7 +231,7 @@ export class PackageInstaller {
    */
   runInstallTracked(exe: string, args: string[], cwd: string, packageName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = cp.spawn(exe, args, { cwd, shell: false }) as any;
+      const child = cp.spawn(exe, args, { cwd, shell: false });
 
       const sendProgress = (stage: string, percent: number) => {
         void this.panel.webview?.postMessage({ type: 'pkgProgress', name: packageName, stage, percent });

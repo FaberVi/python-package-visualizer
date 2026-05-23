@@ -78,6 +78,32 @@ window.showDetail = function (pkg) {
     ? `<div class="field"><label>${window.t ? window.t('detail.released') : 'Released'}</label><div class="field-value">${esc(formatReleaseDate(pkg.releaseDate))}</div></div>`
     : '';
 
+  // Freshness indicator based on release age
+  let freshnessHtml = '';
+  if (pkg.releaseDate) {
+    const ageMs = Date.now() - new Date(pkg.releaseDate).getTime();
+    const months = Math.floor(ageMs / (30.44 * 24 * 60 * 60 * 1000));
+    let fColor, fLabel, fIcon;
+    if (months <= 6) {
+      fColor = '#4ade80'; fLabel = window.t ? window.t('detail.freshRecent') : 'Actively maintained'; fIcon = '🟢';
+    } else if (months <= 12) {
+      fColor = '#facc15'; fLabel = (window.t ? window.t('detail.monthsAgo') : '{n} months ago').replace('{n}', months); fIcon = '🟡';
+    } else if (months <= 24) {
+      fColor = '#fb923c'; fLabel = window.t ? window.t('detail.staleWarning') : 'May be unmaintained'; fIcon = '🟠';
+    } else {
+      fColor = '#f87171'; fLabel = window.t ? window.t('detail.abandonedWarning') : 'May be abandoned'; fIcon = '🔴';
+    }
+    const monthsLabel = (window.t ? window.t('detail.monthsAgo') : '{n} months ago').replace('{n}', months);
+    freshnessHtml = `<div class="field">
+      <label>${window.t ? window.t('detail.freshness') : 'Freshness'}</label>
+      <div class="field-value" style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;">${fIcon}</span>
+        <span style="font-weight:600;color:${fColor};font-size:12px;">${esc(monthsLabel)}</span>
+        <span style="font-size:11px;color:var(--vscode-descriptionForeground);">— ${esc(fLabel)}</span>
+      </div>
+    </div>`;
+  }
+
   const pypiLinkHtml = `<div class="field"><label>${window.t ? window.t('detail.pypiPage') : 'PyPI Page'}</label><div class="field-value"><span style="cursor:pointer;color:var(--vscode-textLink-foreground)" class="detail-pypi-link" data-name="${esc(pkg.name)}">${esc(pkg.name)} &#x2197;</span></div></div>`;
 
   const metaGridHtml = `
@@ -121,6 +147,7 @@ window.showDetail = function (pkg) {
     <div class="field"><label>${window.t ? window.t('detail.installed') : 'Installed version'}</label><div class="field-value ver">${esc(pkg.installedVersion || 'Not installed')}</div></div>
     <div class="field"><label>${window.t ? window.t('detail.latest') : 'Latest version'}</label><div class="field-value ver">${esc(pkg.latestVersion || '—')}</div></div>
     ${releaseDateHtml}
+    ${freshnessHtml}
     <div class="field"><label>${window.t ? window.t('detail.pinnedInFile') : 'Pinned in file'}</label><div class="field-value">${esc(pkg.specifiedVersion || 'any')}</div></div>
     <div class="field"><label>${window.t ? window.t('detail.sourceFile') : 'Source file'}</label><div class="field-value">${esc(pkg.source || '—')}</div></div>
     ${pypiLinkHtml}

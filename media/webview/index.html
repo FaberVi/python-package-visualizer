@@ -67,6 +67,7 @@
       <option value="all">All statuses</option>
       <option value="update-available">Updates available</option>
       <option value="up-to-date">Up to date</option>
+      <option value="drift">Disaligned</option>
       <option value="unknown">Unknown</option>
       <option value="not-installed">Not installed</option>
     </select>
@@ -94,6 +95,11 @@
       <span class="stat-num" id="stat-update">0</span>
       <span>updates available</span>
     </span>
+    <span class="stat-card drift clickable" id="stat-drift-card" data-filter="drift" title="Click to filter">
+      <span>⚠️</span>
+      <span class="stat-num" id="stat-drift">0</span>
+      <span>disaligned</span>
+    </span>
     <span class="stat-card unknown clickable" id="stat-unknown-card" data-filter="unknown" title="Click to filter">
       <span>❓</span>
       <span class="stat-num" id="stat-unknown">0</span>
@@ -103,6 +109,11 @@
       <span>&#x1F534;</span>
       <span class="stat-num" id="stat-vuln">0</span>
       <span>vulnerable</span>
+    </span>
+    <span class="stat-card stale clickable" id="stat-stale-card" data-filter="stale" title="Click to filter" style="display:none">
+      <span>&#x1F570;&#xFE0F;</span>
+      <span class="stat-num" id="stat-stale">0</span>
+      <span>stale</span>
     </span>
     <span class="stat-card conflict clickable" id="stat-conflict-card" data-filter="conflict" title="Click to filter" style="display:none">
       <span>&#x26A1;</span>
@@ -123,6 +134,8 @@
     <div class="tab" data-tab="performance">Performance</div>
     <div class="tab" data-tab="history">History</div>
     <div class="tab" data-tab="licenses">Licenses</div>
+    <div class="tab" data-tab="conflicts">Conflicts</div>
+    <div class="tab" data-tab="venv-health">Environment</div>
     <div class="tab" data-tab="snapshots">Snapshots</div>
   </div>
 
@@ -211,6 +224,7 @@
     <div id="bulk-bar">
       <span id="bulk-count">0 selected</span>
       <button class="bulk-btn" id="bulk-update">↑ Update Selected</button>
+      <button class="bulk-btn" id="bulk-sync">🔗 Align Selected</button>
       <button class="bulk-btn danger" id="bulk-deselect">✕ Deselect All</button>
     </div>
 
@@ -235,6 +249,12 @@
               <span class="th-inner">
                 Package
                 <span class="sort-icon" id="si-name">▲</span>
+              </span>
+            </th>
+            <th data-col="required">
+              <span class="th-inner">
+                Required
+                <span class="sort-icon" id="si-required">⬍</span>
               </span>
             </th>
             <th data-col="installed">
@@ -314,6 +334,12 @@
       </div>
       <div id="snapshots-list"></div>
     </div>
+
+    <!-- Conflicts View -->
+    <div id="view-conflicts" style="display:none; flex:1; overflow-y:auto;"></div>
+
+    <!-- Venv Health View -->
+    <div id="view-venv-health" style="display:none; flex:1; overflow-y:auto;"></div>
 
     <!-- Dashboard View -->
     <div id="view-dashboard" style="display:none; flex:1; overflow-y:auto;">
@@ -430,6 +456,14 @@
   <script nonce="{{NONCE}}" src="{{MODAL_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{TOUR_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{GRAPH_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_LICENSES_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_SNAPSHOTS_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_DASHBOARD_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_PERFORMANCE_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_HISTORY_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_UNUSED_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_CONFLICTS_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TAB_VENV_HEALTH_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{TABS_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{DETAIL_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{MAIN_JS_URI}}"></script>

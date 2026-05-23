@@ -92,8 +92,9 @@ window.applyStaticTranslations = function () {
     fs.options[0].textContent = t('toolbar.allStatuses');
     fs.options[1].textContent = t('toolbar.updatesAvailable');
     fs.options[2].textContent = t('toolbar.upToDate');
-    fs.options[3].textContent = t('toolbar.unknown');
-    fs.options[4].textContent = t('toolbar.notInstalled');
+    fs.options[3].textContent = t('toolbar.drift');
+    fs.options[4].textContent = t('toolbar.unknown');
+    fs.options[5].textContent = t('toolbar.notInstalled');
   }
 
   const fg = document.getElementById('filter-group');
@@ -116,12 +117,14 @@ window.applyStaticTranslations = function () {
   const labelOk = document.querySelector('#stat-ok-card span:nth-child(3)');
   const labelUpdate = document.querySelector('#stat-update-card span:nth-child(3)');
   const labelUnknown = document.querySelector('#stat-unknown-card span:nth-child(3)');
+  const labelDrift = document.querySelector('#stat-drift-card span:nth-child(3)');
   const labelVuln = document.querySelector('#stat-vuln-card span:nth-child(3)');
   const labelConflict = document.querySelector('#stat-conflict-card span:nth-child(3)');
 
   if (labelOk) labelOk.textContent = t('stats.upToDate');
   if (labelUpdate) labelUpdate.textContent = t('stats.updatesAvailable');
   if (labelUnknown) labelUnknown.textContent = t('stats.unknown');
+  if (labelDrift) labelDrift.textContent = t('stats.drift');
   if (labelVuln) labelVuln.textContent = t('stats.vulnerable');
   if (labelConflict) labelConflict.textContent = t('stats.conflicts');
 
@@ -143,22 +146,27 @@ window.applyStaticTranslations = function () {
     const inner = th.querySelector('.th-inner');
     if (inner) {
       const icon = inner.querySelector('.sort-icon')?.outerHTML || '';
-      if (col === 'name') inner.innerHTML = `${t('th.package')} ${icon}`;
-      if (col === 'installed') inner.innerHTML = `${t('th.installed')} ${icon}`;
-      if (col === 'latest') inner.innerHTML = `${t('th.latest')} ${icon}`;
-      if (col === 'status') inner.innerHTML = `${t('th.status')} ${icon}`;
-      if (col === 'released') inner.innerHTML = `${t('th.released')} ${icon}`;
+      const key = col === 'name' ? 'package' : col;
+      const label = t(`th.${key}`);
+      const helpTitle = t(`th.${key}.help`);
+      const helpHtml = `<span class="col-help" title="${window.esc(helpTitle)}">?</span>`;
+      inner.innerHTML = `${window.esc(label)}${helpHtml} ${icon}`;
     }
   });
 
   const healthHeader = document.querySelector('#view-list th.col-health .th-inner');
   if (healthHeader) {
-    healthHeader.textContent = t('th.health');
-    healthHeader.setAttribute('title', t('th.health'));
+    const label = t('th.health');
+    const helpTitle = t('th.health.help');
+    healthHeader.innerHTML = `${window.esc(label)}<span class="col-help" title="${window.esc(helpTitle)}">?</span>`;
   }
 
   const actionsHeader = document.querySelector('#view-list th:not([class]):not([data-col]) .th-inner');
-  if (actionsHeader) actionsHeader.textContent = t('th.actions');
+  if (actionsHeader) {
+    const label = t('th.actions');
+    const helpTitle = t('th.actions.help');
+    actionsHeader.innerHTML = `${window.esc(label)}<span class="col-help" title="${window.esc(helpTitle)}">?</span>`;
+  }
 
   const bannerVulnMsg = document.querySelector('#vuln-banner .alert-banner-msg');
   if (bannerVulnMsg) {
@@ -191,5 +199,12 @@ window.applyStaticTranslations = function () {
   if (addInstall && !addInstall.classList.contains('is-installed') && !addInstall.disabled) {
     addInstall.innerHTML = t('addPkg.installBtn');
   }
+
+  const elBulkUpdate = document.getElementById('bulk-update');
+  const elBulkSync = document.getElementById('bulk-sync');
+  const elBulkDeselect = document.getElementById('bulk-deselect');
+  if (elBulkUpdate) elBulkUpdate.textContent = t('bulk.updateSelected');
+  if (elBulkSync) elBulkSync.innerHTML = t('bulk.syncSelected');
+  if (elBulkDeselect) elBulkDeselect.textContent = t('bulk.deselectAll');
 };
 

@@ -1,0 +1,41 @@
+/* ── License Compliance View ─────────────────────── */
+#view-licenses {
+  flex: 1; overflow-y: auto; padding: 16px 18px;
+}
+.license-summary {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.license-group { margin-bottom: 20px; }
+.license-group-header {
+  display:       flex;
+  align-items:   center;
+  gap:           8px;
+  font-size:     12px;
+  font-weight:   600;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.license-risk-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+}
+.license-risk-safe       { background: var(--c-ok-bg);             color: var(--c-ok); }
+.license-risk-caution    { background: var(--c-update-bg);          color: var(--c-update); }
+.license-risk-restricted { background: var(--c-vuln-bg);            color: var(--c-vuln); }
+.license-risk-unknown    { background: var(--c-unknown-bg);         color: var(--c-unknown); }
+
+.license-pkg-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.license-pkg-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--radius);
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-panel-border);
+  font-size: 11px; cursor: pointer;
+  transition: border-color var(--ease);
+}
+.license-pkg-chip:hover { border-color: var(--vscode-focusBorder); }
+.license-pkg-chip .lpc-name { font-weight: 500; }
+.license-pkg-chip .lpc-lic  { font-size: 10px; color: var(--vscode-descriptionForeground); }

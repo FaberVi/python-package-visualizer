@@ -21,6 +21,9 @@ window.renderAll = function () {
   if (typeof window.updateConflictStat === 'function') {
     window.updateConflictStat();
   }
+  if (typeof window.updateConflictBadge === 'function') {
+    window.updateConflictBadge();
+  }
   if (typeof window.updateUnusedBadge === 'function') {
     window.updateUnusedBadge(window.allPackages);
   }
@@ -87,8 +90,12 @@ window.addEventListener('message', event => {
         });
       }
       window.updateConflictStat?.();
+      window.updateConflictBadge?.();
       if (window.activeTab === 'list') {
         window.renderTable?.(window.getFiltered());
+      }
+      if (window.activeTab === 'conflicts') {
+        window.renderConflicts?.();
       }
       break;
 
@@ -102,6 +109,13 @@ window.addEventListener('message', event => {
         window.renderSnapshots?.();
       }
       break;
+
+    case 'venvHealth':
+      window.venvHealthReport = msg.report || null;
+      if (window.activeTab === 'venv-health') {
+        window.renderVenvHealth?.();
+      }
+      break;
   }
 });
 
@@ -110,6 +124,9 @@ window.addEventListener('message', event => {
 
 // ── DOM Listeners Setup & Handlers ──────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Show loading spinner immediately on start
+  window.showLoading?.(window.t('loading.scanning') || 'Scanning workspace…');
+
   const elRefresh = document.getElementById('btn-refresh');
   const elBtnSafeMode = document.getElementById('btn-safe-mode');
   const elLangSelect = document.getElementById('lang-select');
@@ -122,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const elExportMenu = document.getElementById('export-menu');
   const elExportWrap = document.getElementById('export-wrap');
   const elBulkUpdate = document.getElementById('bulk-update');
+  const elBulkSync = document.getElementById('bulk-sync');
   const elBulkDeselect = document.getElementById('bulk-deselect');
   const elCheckAll = document.getElementById('check-all');
   const elBtnAddPkg = document.getElementById('btn-add-pkg');
@@ -314,6 +332,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     if (names.length) {
       window.vscode.postMessage({ type: 'bulkUpdate', names });
+    }
+    window.selectedPackages.clear();
+    window.updateBulkBar();
+    window.renderAll();
+  });
+
+  elBulkSync?.addEventListener('click', () => {
+    const packagesToSync = [...window.selectedPackages]
+      .map(name => {
+        const pkg = window.allPackages.find(p => p.name === name);
+        if (!pkg?.specifiedVersion || !pkg.installedVersion) return null;
+        const pinned = window.extractPinnedVersion(pkg.specifiedVersion);
+        if (!pinned || pinned === pkg.installedVersion) return null;
+        return { name: pkg.name, source: pkg.source || '' };
+      })
+      .filter(Boolean);
+
+    if (packagesToSync.length) {
+      window.vscode.postMessage({ type: 'bulkSync', packages: packagesToSync });
     }
     window.selectedPackages.clear();
     window.updateBulkBar();

@@ -86,6 +86,7 @@ export class ReportExporter {
           const status = r.status === 'up-to-date' ? '✅ Up to date'
             : r.status === 'update-available' ? '⚠️ Update available'
             : r.status === 'not-installed'     ? '⬜ Not installed'
+            : r.status === 'drift'             ? '⚠️ Out of sync'
             : '❓ Unknown';
           const cves = r.vulnerabilities?.length ? `🔴 ${r.vulnerabilities.length}` : '—';
           lines.push(`| [${r.packageName}](https://pypi.org/project/${r.packageName}/) | \`${r.installedVersion || '—'}\` | \`${r.latestVersion || '—'}\` | ${status} | ${r.releaseDate || '—'} | ${cves} |`);

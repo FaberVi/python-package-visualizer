@@ -5,6 +5,7 @@ export type VersionStatus =
   | 'up-to-date'
   | 'update-available'
   | 'not-installed'
+  | 'drift'
   | 'unknown';
 
 export interface VulnerabilityInfo {
