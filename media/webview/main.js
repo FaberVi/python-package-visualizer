@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         window.activeCardFilter = f;
         card.classList.add('selected');
-        if (f === 'vuln' || f === 'conflict') {
+        if (f === 'vuln' || f === 'conflict' || f === 'stale') {
           if (elFilter) elFilter.value = 'all';
           window.activeFilterStatus = 'all';
         } else {

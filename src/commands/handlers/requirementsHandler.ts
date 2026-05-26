@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '../../utils/logger.js';
 import { hasDrift } from '../../utils/version.js';
-import { RequirementsSync } from '../../modules/requirementsSync.js';
+import { RequirementsSync, SyncResult } from '../../modules/requirementsSync.js';
 import { RequirementsGenerator } from '../../modules/requirementsGenerator.js';
 import { ScannedPackage } from '../../modules/packageScanner.js';
 
@@ -28,9 +28,11 @@ export class RequirementsHandler {
       return;
     }
     try {
-      await this.reqSync.syncVersion(root, packageName, version, sourceFile);
-      void vscode.window.showInformationMessage(`📌 Pinned ${packageName} to ==${version} in ${sourceFile}`);
-      await this.refreshCallback();
+      const result = await this.reqSync.syncVersion(root, packageName, version, sourceFile);
+      this.showSyncOutcome(result, packageName, sourceFile, `📌 Pinned ${packageName} to ==${version} in ${sourceFile}`);
+      if (result.outcome === 'synced') {
+        await this.refreshCallback();
+      }
     } catch (err) {
       void vscode.window.showErrorMessage(`Failed to pin ${packageName}: ${String(err)}`);
     }
@@ -61,25 +63,26 @@ export class RequirementsHandler {
     }
 
     try {
-      const synced = await this.reqSync.syncVersion(root, packageName, installedVersion, sourceFile);
-      if (synced) {
-        void vscode.window.showInformationMessage(
-          `🔗 Synced ${packageName}==${installedVersion} in ${sourceFile}`
-        );
-        await this.refreshCallback();
-      } else {
-        void vscode.window.showWarningMessage(
-          `Could not find "${packageName}" in ${sourceFile} to sync.`
-        );
-      }
+      const result = await this.reqSync.syncVersion(root, packageName, installedVersion, sourceFile);
+      this.showSyncOutcome(
+        result,
+        packageName,
+        sourceFile,
+        `🔗 Synced ${packageName}==${installedVersion} in ${sourceFile}`
+      );
+      // WHY: always refresh to reset the webview sync button state,
+      // even when sync fails (not-found, unsupported).
+      await this.refreshCallback();
     } catch (err) {
       void vscode.window.showErrorMessage(`Failed to sync ${packageName}: ${String(err)}`);
+      await this.refreshCallback();
     }
   }
 
   /**
    * Aligns the requirement pin version with the currently installed version for multiple packages in bulk.
    * Only syncs packages whose specified version actually diverges from the installed version (drift check).
+   * Reports per-package failures in the final message.
    */
   async bulkSyncRequirementsToInstalled(
     packages: Array<{ name: string; source: string }>,
@@ -97,43 +100,78 @@ export class RequirementsHandler {
 
     try {
       let syncedCount = 0;
+      const failedNames: string[] = [];
+      const unsupportedNames: string[] = [];
+
       for (const p of packages) {
         const scanned = lastPackages.find(
           lp => lp.name.toLowerCase() === p.name.toLowerCase()
         );
         const installedVersion = scanned?.installedVersion;
         if (!installedVersion) {
+          failedNames.push(p.name);
           continue;
         }
 
-        // Q-2: Verify drift before syncing — skip packages already aligned
+        // Verify drift before syncing — skip packages already aligned
         if (!scanned.specifiedVersion || !hasDrift(scanned.specifiedVersion, installedVersion)) {
           continue;
         }
 
-        const synced = await this.reqSync.syncVersion(root, p.name, installedVersion, p.source);
-        if (synced) {
+        const result = await this.reqSync.syncVersion(root, p.name, installedVersion, p.source);
+        if (result.outcome === 'synced') {
           syncedCount++;
+        } else if (result.outcome === 'unsupported') {
+          unsupportedNames.push(p.name);
+        } else {
+          failedNames.push(p.name);
         }
       }
 
+      // Build the result message with per-package failure details
       if (syncedCount > 0) {
-        const msg = isIt
+        let msg = isIt
           ? `🔗 Allineati ${syncedCount} pacchetto/i con le versioni installate.`
           : `🔗 Aligned ${syncedCount} package(s) with installed versions.`;
+
+        if (failedNames.length > 0) {
+          msg += isIt
+            ? ` Non trovati: ${failedNames.join(', ')}.`
+            : ` Not found: ${failedNames.join(', ')}.`;
+        }
+        if (unsupportedNames.length > 0) {
+          msg += isIt
+            ? ` Non supportati (modifica manuale): ${unsupportedNames.join(', ')}.`
+            : ` Unsupported format (edit manually): ${unsupportedNames.join(', ')}.`;
+        }
+
         void vscode.window.showInformationMessage(msg);
         await this.refreshCallback();
       } else {
-        const msg = isIt
+        let msg = isIt
           ? 'Nessun pacchetto da allineare.'
           : 'No packages could be aligned.';
+
+        if (unsupportedNames.length > 0) {
+          msg = isIt
+            ? `Formato non supportato per: ${unsupportedNames.join(', ')}. Modifica il file manualmente.`
+            : `Unsupported file format for: ${unsupportedNames.join(', ')}. Edit the file manually.`;
+        }
+        if (failedNames.length > 0) {
+          msg += isIt
+            ? ` Non trovati nel file: ${failedNames.join(', ')}.`
+            : ` Not found in file: ${failedNames.join(', ')}.`;
+        }
+
         void vscode.window.showWarningMessage(msg);
+        await this.refreshCallback();
       }
     } catch (err) {
       const msg = isIt
         ? `Errore nell'allineamento dei pacchetti: ${String(err)}`
         : `Failed to align packages: ${String(err)}`;
       void vscode.window.showErrorMessage(msg);
+      await this.refreshCallback();
     }
   }
 
@@ -172,16 +210,15 @@ export class RequirementsHandler {
     }
 
     try {
-      const removed = await this.reqSync.removePackage(root, packageName, sourceFile);
-      if (removed) {
-        void vscode.window.showInformationMessage(
-          `Removed "${packageName}" from ${sourceFile}.`
-        );
+      const result = await this.reqSync.removePackage(root, packageName, sourceFile);
+      this.showSyncOutcome(
+        result,
+        packageName,
+        sourceFile,
+        `Removed "${packageName}" from ${sourceFile}.`
+      );
+      if (result.outcome === 'synced') {
         await this.refreshCallback();
-      } else {
-        void vscode.window.showWarningMessage(
-          `Could not find "${packageName}" in ${sourceFile}. It may have already been removed.`
-        );
       }
     } catch (err) {
       void vscode.window.showErrorMessage(`Failed to remove package: ${String(err)}`);
@@ -242,5 +279,32 @@ export class RequirementsHandler {
     this.logger.info('Cleared manually selected requirements path');
     void vscode.window.showInformationMessage('Cleared manually selected requirements file.');
     await this.refreshCallback();
+  }
+
+  // ── Private helpers ─────────────────────────────────────────────────────
+
+  /**
+   * Displays the appropriate VS Code notification based on a SyncResult.
+   * Why: Centralizes the outcome→notification mapping so all sync callers behave consistently.
+   */
+  private showSyncOutcome(
+    result: SyncResult,
+    packageName: string,
+    sourceFile: string,
+    successMessage: string
+  ): void {
+    switch (result.outcome) {
+      case 'synced':
+        void vscode.window.showInformationMessage(successMessage);
+        break;
+      case 'not-found':
+        void vscode.window.showWarningMessage(
+          `Could not find "${packageName}" in ${sourceFile} to sync.`
+        );
+        break;
+      case 'unsupported':
+        void vscode.window.showWarningMessage(result.reason);
+        break;
+    }
   }
 }

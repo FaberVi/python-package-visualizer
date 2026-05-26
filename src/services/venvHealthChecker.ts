@@ -2,6 +2,14 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+/** Individual installed package entry from pip list. */
+export interface InstalledPackageEntry {
+  name: string;
+  version: string;
+  /** Latest version available on PyPI, set only when it differs from installed. */
+  latestVersion?: string;
+}
+
 /** Diagnostic report describing the virtual environment health. */
 export interface VenvHealthReport {
   pythonVersion: string;
@@ -12,8 +20,9 @@ export interface VenvHealthReport {
   venvPath: string;
   isVenvActive: boolean;
   totalInstalled: number;
+  /** Full list of installed packages with their versions. */
+  installedPackages: InstalledPackageEntry[];
   duplicatePackages: Array<{ name: string; versions: string[] }>;
-  conflictCount: number;
   sitePackagesPath: string;
 }
 
@@ -31,13 +40,21 @@ export class VenvHealthChecker {
       pythonInfo,
       pipInfo,
       installedPackages,
-      conflictCount,
+      outdatedMap,
     ] = await Promise.all([
       this.getPythonInfo(cwd),
       this.getPipInfo(cwd),
       this.getInstalledPackages(cwd),
-      this.getConflictCount(cwd),
+      this.getOutdatedPackages(cwd),
     ]);
+
+    // Merge latest version info into installed packages
+    for (const pkg of installedPackages) {
+      const latest = outdatedMap.get(pkg.name.toLowerCase());
+      if (latest && latest !== pkg.version) {
+        pkg.latestVersion = latest;
+      }
+    }
 
     const duplicatePackages = this.findDuplicates(installedPackages);
     const venvInfo = this.detectVenvType(cwd, pythonInfo.sysPrefix, pythonInfo.basePrefix);
@@ -56,8 +73,8 @@ export class VenvHealthChecker {
       venvPath: venvInfo.path,
       isVenvActive: venvInfo.isActive,
       totalInstalled: installedPackages.length,
+      installedPackages,
       duplicatePackages,
-      conflictCount,
       sitePackagesPath: pipInfo.location,
     };
   }
@@ -131,7 +148,7 @@ export class VenvHealthChecker {
     });
   }
 
-  private getInstalledPackages(cwd: string): Promise<Array<{ name: string; version: string }>> {
+  private getInstalledPackages(cwd: string): Promise<InstalledPackageEntry[]> {
     const pythonPath = this.resolvePythonPath();
 
     return new Promise(resolve => {
@@ -143,7 +160,7 @@ export class VenvHealthChecker {
       child.on('close', () => {
         clearTimeout(timer);
         try {
-          resolve(JSON.parse(stdout) as Array<{ name: string; version: string }>);
+          resolve(JSON.parse(stdout) as InstalledPackageEntry[]);
         } catch {
           resolve([]);
         }
@@ -152,29 +169,36 @@ export class VenvHealthChecker {
     });
   }
 
-  private getConflictCount(cwd: string): Promise<number> {
+  /**
+   * Fetches outdated packages via `pip list --outdated`.
+   * Returns a Map of normalized name → latest_version.
+   */
+  private getOutdatedPackages(cwd: string): Promise<Map<string, string>> {
     const pythonPath = this.resolvePythonPath();
 
     return new Promise(resolve => {
-      const child = cp.spawn(pythonPath, ['-m', 'pip', 'check'], { cwd });
+      const child = cp.spawn(pythonPath, ['-m', 'pip', 'list', '--outdated', '--format=json'], { cwd });
       let stdout = '';
-      const timer = setTimeout(() => { child.kill(); resolve(0); }, 15_000);
+      const timer = setTimeout(() => { child.kill(); resolve(new Map()); }, 30_000);
 
       child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
       child.on('close', () => {
         clearTimeout(timer);
-        // Each non-empty line of output = one conflict
-        const lines = stdout.trim().split('\n').filter(l => l.trim().length > 0);
-        // "No broken requirements found." means 0 conflicts
-        if (lines.length === 1 && lines[0].toLowerCase().includes('no broken')) {
-          resolve(0);
-        } else {
-          resolve(lines.length);
+        try {
+          const entries = JSON.parse(stdout) as Array<{ name: string; version: string; latest_version: string }>;
+          const map = new Map<string, string>();
+          for (const e of entries) {
+            map.set(e.name.toLowerCase(), e.latest_version);
+          }
+          resolve(map);
+        } catch {
+          resolve(new Map());
         }
       });
-      child.on('error', () => { clearTimeout(timer); resolve(0); });
+      child.on('error', () => { clearTimeout(timer); resolve(new Map()); });
     });
   }
+
 
   /** Detects duplicate packages (same normalized name, different versions). */
   private findDuplicates(packages: Array<{ name: string; version: string }>): Array<{ name: string; versions: string[] }> {

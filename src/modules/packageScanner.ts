@@ -82,10 +82,45 @@ export class PackageScanner {
     this.logger.info(`Found dep files: ${depFiles.join(', ') || 'none'}`);
 
     // Parse in priority order: setup.py first (lowest), then pyproject.toml, then requirements.txt (highest)
+    // When a package appears in multiple files, keep the source from the most sync-friendly format.
     for (const file of depFiles) {
       const parsed = this.parseDepFile(file);
       for (const pkg of parsed) {
-        packages.set(pkg.name, pkg);
+        // WHY: parsers store source as basename (e.g. 'requirements.txt'), but in monorepo
+        // structures the file may live in a subdirectory (e.g. 'backend/requirements.txt').
+        // If the basename doesn't resolve to a real file from workspace root, use the
+        // relative path from root to the actual dep file.
+        const resolvedSource = path.join(workspaceRoot, pkg.source);
+        if (!fs.existsSync(resolvedSource)) {
+          const depRelPath = path.relative(workspaceRoot, file);
+          if (pkg.source === path.basename(file)) {
+            pkg.source = depRelPath as DepFileType;
+          }
+        }
+        const existing = packages.get(pkg.name);
+        if (existing) {
+          // If the new source is a syncable text file, always prefer it (higher priority)
+          const newIsTxt = this.isSyncableTextFile(pkg.source);
+          const existingIsTxt = this.isSyncableTextFile(existing.source);
+
+          if (newIsTxt || !existingIsTxt) {
+            // When both are txt-based, keep specifiedVersion from the file
+            // with the more specific constraint (== pin beats range specifier).
+            // WHY: prevents a later-parsed dev file from overwriting a precise pin.
+            const keepExistingSpec = existingIsTxt && newIsTxt
+              && existing.specifiedVersion?.startsWith('==')
+              && !pkg.specifiedVersion?.startsWith('==');
+
+            packages.set(pkg.name, {
+              ...existing,
+              ...pkg,
+              ...(keepExistingSpec ? { specifiedVersion: existing.specifiedVersion, source: existing.source } : {}),
+            });
+          }
+          // else: existing has a txt source, new doesn't → keep existing source
+        } else {
+          packages.set(pkg.name, pkg);
+        }
       }
     }
 
@@ -374,6 +409,16 @@ export class PackageScanner {
     }
 
     return null;
+  }
+
+  /**
+   * Determines whether a dependency source file is a line-based text format
+   * that can be directly synced by RequirementsSync (*.txt, *.in).
+   * Why: During multi-file deduplication, we prefer sources that support automated sync.
+   */
+  private isSyncableTextFile(source: string): boolean {
+    const lower = source.toLowerCase();
+    return lower.endsWith('.txt') || lower.endsWith('.in');
   }
 
   /**

@@ -144,6 +144,12 @@ window.showTab = function (tab, filtered) {
   const elViewConflicts = document.getElementById('view-conflicts');
   const elViewVenvHealth = document.getElementById('view-venv-health');
 
+  // Hide loading/empty overlays to prevent overlap with tab content
+  const elLoading = document.getElementById('loading');
+  const elEmpty = document.getElementById('empty-state');
+  if (elLoading) elLoading.style.display = 'none';
+  if (elEmpty) elEmpty.style.display = 'none';
+
   if (elGraph) elGraph.style.display = 'none';
   if (elList) elList.style.display = 'none';
   if (elUnused) elUnused.style.display = 'none';

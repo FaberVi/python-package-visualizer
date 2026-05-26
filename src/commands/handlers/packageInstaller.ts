@@ -43,7 +43,10 @@ export class PackageInstaller {
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg?.installedVersion) {
         this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install');
-        await this.reqSync.syncVersion(root, packageName, pkg.installedVersion, pkg.source);
+        const syncResult = await this.reqSync.syncVersion(root, packageName, pkg.installedVersion, pkg.source);
+        if (syncResult.outcome !== 'synced') {
+          this.logger.warn(`Post-update sync skipped for ${packageName}: ${syncResult.outcome}`);
+        }
       }
 
       void vscode.window.showInformationMessage(
@@ -93,7 +96,10 @@ export class PackageInstaller {
       const scanned = await this.scanner.scanWorkspace(root);
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg) {
-        await this.reqSync.syncVersion(root, packageName, finalVersion, pkg.source);
+        const syncResult = await this.reqSync.syncVersion(root, packageName, finalVersion, pkg.source);
+        if (syncResult.outcome !== 'synced') {
+          this.logger.warn(`Post-rollback sync skipped for ${packageName}: ${syncResult.outcome}`);
+        }
       }
 
       void vscode.window.showInformationMessage(

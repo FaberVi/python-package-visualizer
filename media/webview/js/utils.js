@@ -205,18 +205,21 @@ window.showLoading = function (msg) {
   const elLoadingMsg = document.getElementById('loading-msg');
   const elLoading    = document.getElementById('loading');
   const elEmpty      = document.getElementById('empty-state');
-  const elGraph      = document.getElementById('view-graph');
-  const elList       = document.getElementById('view-list');
-  const elUnused     = document.getElementById('view-unused');
-  const elHistory    = document.getElementById('view-history');
   
   if (elLoadingMsg) elLoadingMsg.textContent = msg || 'Scanning workspace…';
   if (elLoading) elLoading.style.display = 'flex';
   if (elEmpty) elEmpty.style.display = 'none';
-  if (elGraph) elGraph.style.display = 'none';
-  if (elList) elList.style.display = 'none';
-  if (elUnused) elUnused.style.display = 'none';
-  if (elHistory) elHistory.style.display = 'none';
+
+  // Hide ALL view containers to prevent overlap with loading spinner
+  const viewIds = [
+    'view-graph', 'view-list', 'view-unused', 'view-history',
+    'view-dashboard', 'view-performance', 'view-licenses',
+    'view-snapshots', 'view-conflicts', 'view-venv-health'
+  ];
+  for (const id of viewIds) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  }
 };
 
 /**

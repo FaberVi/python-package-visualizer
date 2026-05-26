@@ -250,7 +250,29 @@ cd python-package-visualizer
 npm install
 ```
 
-### Build Commands
+### Build & Install (One Command)
+
+The project includes an automated build pipeline that runs all steps in sequence:
+
+```powershell
+.\scripts\build-all.ps1
+```
+
+This single script performs **5 steps** automatically:
+
+| Step | Action | Description |
+|------|--------|-------------|
+| 1/5 | **Lint** | Runs ESLint on `src/` |
+| 2/5 | **Type Check** | Runs `tsc --noEmit` to verify TypeScript types |
+| 3/5 | **Build** | Compiles TypeScript → `dist/extension.js` via esbuild |
+| 4/5 | **Package VSIX** | Bundles the extension as `.vsix` via `vsce` |
+| 5/5 | **Install** | Installs the new VSIX with `--force` |
+
+The pipeline **stops on first failure** and reports which step failed with the exit code. After install, reload manually with `Ctrl+Shift+P` → `Developer: Reload Window`.
+
+### Individual npm Scripts
+
+For granular operations, you can run each step individually:
 
 | Command | Description |
 |---|---|
@@ -264,36 +286,13 @@ npm install
 ### Typical Development Workflow
 
 ```bash
-# 1. Start watch mode (keeps rebuilding on save)
+# Option A — Full automated pipeline (build + install + reload)
+.\scripts\build-all.ps1
+
+# Option B — Watch mode for rapid iteration
 npm run watch
-
-# 2. Press F5 in VS Code to launch the Extension Development Host
-
-# 3. Make changes → the watcher rebuilds automatically
-#    Reload the dev host window (Ctrl+Shift+P → "Developer: Reload Window")
-
-# 4. Before committing, verify a clean build
-npm run build
-
-# 5. Run linter
-npm run lint
-
-# 6. Package for distribution
-npm run package
-```
-
-### Packaging a VSIX
-
-```bash
-# Install vsce globally (if not already)
-npm install -g @vscode/vsce
-
-# Package the extension
-vsce package
-# → produces python-package-visualizer-X.Y.Z.vsix
-
-# Install locally for testing
-code --install-extension python-package-visualizer-*.vsix
+# Press F5 in VS Code to launch the Extension Development Host
+# Make changes → watcher rebuilds → reload dev host (Ctrl+Shift+P → "Reload Window")
 ```
 
 ### Project Structure
@@ -384,6 +383,8 @@ python-package-visualizer/
 │       ├── welcome.html          # Sidebar HTML template
 │       └── welcome.js            # Sidebar settings + event handlers
 ├── test/                         # Extension integration tests
+├── scripts/
+│   └── build-all.ps1             # Automated build pipeline (lint → type-check → build → package → install)
 ├── dist/                         # Compiled output (gitignored)
 ├── esbuild.js                    # Build script configuration
 ├── tsconfig.json                 # TypeScript compiler config
@@ -402,7 +403,7 @@ Issues and pull requests are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 - 💡 **Feature requests:** same place — use the `enhancement` label
 - 📖 **Documentation:** [GitHub Wiki](https://github.com/Elanchezhiyan-P/python-package-visualizer/wiki)
 
-> **Before submitting a PR**, make sure `npm run build` and `npm run lint` pass cleanly.
+> **Before submitting a PR**, run `.\scripts\build-all.ps1` and make sure all 5 steps pass cleanly.
 
 ---
 
