@@ -349,12 +349,14 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       .filter(Boolean);
 
-    if (packagesToSync.length) {
+    if (!packagesToSync.length) return;
+
+    window.showSyncConfirmDialog(() => {
       window.vscode.postMessage({ type: 'bulkSync', packages: packagesToSync });
-    }
-    window.selectedPackages.clear();
-    window.updateBulkBar();
-    window.renderAll();
+      window.selectedPackages.clear();
+      window.updateBulkBar();
+      window.renderAll();
+    });
   });
 
   elBulkDeselect?.addEventListener('click', () => {

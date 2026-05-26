@@ -10,7 +10,7 @@ import { parseSetupPy } from './parsers/setupPyParser.js';
 import { parseSetupCfg } from './parsers/setupCfgParser.js';
 import { parsePipfile } from './parsers/pipfileParser.js';
 
-export type DepFileType = 'requirements.txt' | 'pyproject.toml' | 'setup.py' | 'setup.cfg' | 'Pipfile';
+export type DepFileType = 'requirements.txt' | 'pyproject.toml' | 'setup.py' | 'setup.cfg' | 'Pipfile' | (string & {});
 
 export interface ConflictInfo {
   package: string;

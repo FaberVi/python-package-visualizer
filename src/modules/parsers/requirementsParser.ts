@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ScannedPackage } from '../packageScanner.js';
+import { ScannedPackage, DepFileType } from '../packageScanner.js';
 import {
   normalizeName,
   getGroupFromFileName,
@@ -32,6 +32,9 @@ export function parseRequirementsTxt(
   // Join continuation lines
   const normalized = content.replace(/\\\n\s*/g, ' ');
   const lines = normalized.split('\n');
+
+  // Use the actual basename so sync/remove/pin operations target the correct file
+  const sourceBasename = path.basename(filePath) as DepFileType;
 
   for (const rawLine of lines) {
     // Strip inline comments
@@ -66,12 +69,11 @@ export function parseRequirementsTxt(
     if (!match) {
       continue;
     }
-
     results.push({
       name: normalizeName(match[1]),
       specifiedVersion: (match[5] ?? '').trim(),
       installedVersion: '',
-      source: 'requirements.txt',
+      source: sourceBasename,
       extras: match[4] ? match[4].split(',').map(e => e.trim()) : [],
       requires: [],
       group,

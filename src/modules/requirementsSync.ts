@@ -20,7 +20,7 @@ export class RequirementsSync {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const lines = content.split('\n');
-      const namePattern = packageName.replace(/[-_.]/g, '[-_.]');
+      const namePattern = packageName.replace(/[-_.]/g, '[-_.]+');
       const regex = new RegExp(
         `^\\s*(${namePattern}(?:\\[.*?\\])?)\\s*([=!<>~^].*)?\\s*$`,
         'i'
@@ -65,16 +65,17 @@ export class RequirementsSync {
       const lines = content.split('\n');
       let changed = false;
 
+      const namePattern = packageName.replace(/[-_.]/g, '[-_.]+');
+      const regex = new RegExp(
+        `^(${namePattern}(?:\\[.*?\\])?)\\s*([=!<>~^]+.*)$`,
+        'i'
+      );
+      const bareRegex = new RegExp(`^(${namePattern}(?:\\[.*?\\])?)\\s*$`, 'i');
+
       const updatedLines = lines.map(line => {
         const stripped = line.trim();
         if (stripped.startsWith('#') || stripped === '') { return line; }
 
-        // Match: package-name[extras]operator version
-        const namePattern = packageName.replace(/[-_.]/g, '[-_.]');
-        const regex = new RegExp(
-          `^(${namePattern}(?:\\[.*?\\])?)\\s*([=!<>~^]+.*)$`,
-          'i'
-        );
         const match = stripped.match(regex);
         if (match) {
           changed = true;
@@ -83,7 +84,6 @@ export class RequirementsSync {
           return `${pkgBase}${extras}==${newVersion}`;
         }
         // Also match bare package name with no version specifier
-        const bareRegex = new RegExp(`^(${namePattern}(?:\\[.*?\\])?)\\s*$`, 'i');
         if (stripped.match(bareRegex)) {
           changed = true;
           return `${packageName}==${newVersion}`;

@@ -231,11 +231,23 @@ window.i18n.en = {
   'lic.subtitle': 'Overview of package license categories',
   // Snapshots
   'snap.title': '📸 Environment Snapshots',
+  'snap.subtitle': 'Save and restore the exact state of your installed packages',
+  'snap.noSnapshotsTitle': 'No snapshots yet',
   'snap.take': '➕ Take Snapshot',
   'snap.noSnapshots': 'No snapshots yet. Take a snapshot to save the current installed state of all packages.',
   'snap.restore': 'Restore',
   'snap.delete': 'Delete',
   'snap.packages': 'packages',
+  'snap.view': '👁 View',
+  'snap.hide': '▴ Hide',
+  'snap.detailPkg': 'Package',
+  'snap.detailVer': 'Version',
+  // Sync confirmation
+  'sync.confirmTitle': 'Create Snapshot?',
+  'sync.confirmMessage': 'Would you like to save a snapshot of your current packages before syncing?',
+  'sync.snapshotFirst': '📸 Snapshot & Sync',
+  'sync.justSync': '🔗 Just Sync',
+  'sync.cancel': 'Cancel',
   // Graph
   'graph.hint': 'Scroll to zoom  ·  Drag to pan  ·  Click node to expand / view details',
   'graph.fit': '⊡ Fit',

@@ -231,11 +231,23 @@ window.i18n.it = {
   'lic.subtitle': 'Panoramica delle categorie di licenza dei pacchetti',
   // Snapshots
   'snap.title': '📸 Snapshot Ambiente',
+  'snap.subtitle': 'Salva e ripristina lo stato esatto dei pacchetti installati',
+  'snap.noSnapshotsTitle': 'Nessuno snapshot',
   'snap.take': '➕ Crea Snapshot',
   'snap.noSnapshots': 'Nessuno snapshot. Crea uno snapshot per salvare lo stato attuale dei pacchetti installati.',
   'snap.restore': 'Ripristina',
   'snap.delete': 'Elimina',
   'snap.packages': 'pacchetti',
+  'snap.view': '👁 Dettagli',
+  'snap.hide': '▴ Nascondi',
+  'snap.detailPkg': 'Pacchetto',
+  'snap.detailVer': 'Versione',
+  // Conferma sincronizzazione
+  'sync.confirmTitle': 'Creare Snapshot?',
+  'sync.confirmMessage': 'Vuoi salvare uno snapshot dei pacchetti attuali prima di sincronizzare?',
+  'sync.snapshotFirst': '📸 Snapshot e Sincronizza',
+  'sync.justSync': '🔗 Solo Sincronizza',
+  'sync.cancel': 'Annulla',
   // Graph
   'graph.hint': 'Scrolla per zoom  ·  Trascina per muovere  ·  Clicca nodo per espandere / dettagli',
   'graph.fit': 'Adatta',
