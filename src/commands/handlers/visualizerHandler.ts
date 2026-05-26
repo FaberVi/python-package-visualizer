@@ -87,6 +87,33 @@ export class VisualizerHandler {
       const scanned = uniqueScanned;
 
       if (scanned.length === 0) {
+        const existingManualPath = this.context.workspaceState.get<string>(
+          'pythonPackageVisualizer.manualRequirementsPath'
+        );
+
+        // WHY: If a manual path is already stored but still yielded 0 packages,
+        // the file is unparseable or empty. Clear it and show an error instead of
+        // re-prompting — this prevents an infinite select→re-scan→prompt loop.
+        if (existingManualPath) {
+          this.logger.warn(
+            `Manual requirements path "${existingManualPath}" produced 0 packages — clearing.`
+          );
+          await this.context.workspaceState.update(
+            'pythonPackageVisualizer.manualRequirementsPath',
+            undefined
+          );
+          void vscode.window.showWarningMessage(
+            `The selected file "${existingManualPath}" could not be parsed or contains no dependencies. ` +
+            'Please ensure it is a valid requirements.txt, pyproject.toml, setup.py, setup.cfg, or Pipfile.'
+          );
+          this.panel.sendProgress(
+            'No packages found. The selected file could not be parsed.'
+          );
+          this.panel.sendPackages([], []);
+          this.sidebar?.sendPackages([], undefined, 'init');
+          return;
+        }
+
         // Fallback for manual selection if zero files were auto-detected
         const choice = await vscode.window.showInformationMessage(
           'No Python dependency files were found automatically in the workspace root. Would you like to select a requirements.txt manually?',
