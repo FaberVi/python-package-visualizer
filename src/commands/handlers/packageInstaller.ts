@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import { Logger } from '../../utils/logger.js';
+import { hasDrift } from '../../utils/version.js';
 import { PackageScanner } from '../../modules/packageScanner.js';
 import { VersionHistoryCache } from '../../services/versionHistoryCache.js';
 import { RequirementsSync } from '../../modules/requirementsSync.js';
@@ -46,7 +47,7 @@ export class PackageInstaller {
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg?.installedVersion) {
         this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install');
-        const syncResult = await this.reqSync.syncVersion(root, packageName, pkg.installedVersion, pkg.source);
+        const syncResult = await this.reqSync.syncVersionWithFallback(root, packageName, pkg.installedVersion, pkg.source);
         if (syncResult.outcome !== 'synced') {
           this.logger.warn(`Post-update sync skipped for ${packageName}: ${syncResult.outcome}`);
         }
@@ -102,7 +103,7 @@ export class PackageInstaller {
       const scanned = await this.scanner.scanWorkspace(root);
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg) {
-        const syncResult = await this.reqSync.syncVersion(root, packageName, finalVersion, pkg.source);
+        const syncResult = await this.reqSync.syncVersionWithFallback(root, packageName, finalVersion, pkg.source);
         if (syncResult.outcome !== 'synced') {
           this.logger.warn(`Post-rollback sync skipped for ${packageName}: ${syncResult.outcome}`);
         }
@@ -158,7 +159,7 @@ export class PackageInstaller {
             const scanned = await this.scanner.scanWorkspace(root);
             const pkg = scanned.find(p => p.name === name);
             if (pkg?.installedVersion) {
-              const syncResult = await this.reqSync.syncVersion(
+              const syncResult = await this.reqSync.syncVersionWithFallback(
                 root,
                 name,
                 pkg.installedVersion,
@@ -177,6 +178,27 @@ export class PackageInstaller {
         }
       }
     );
+
+    // Reconcile any pins still out of sync (wrong source file, pruned includes, etc.)
+    const finalScan = await this.scanner.scanWorkspace(root);
+    for (const pkg of finalScan) {
+      if (
+        pkg.installedVersion &&
+        pkg.specifiedVersion &&
+        pkg.source &&
+        hasDrift(pkg.specifiedVersion, pkg.installedVersion)
+      ) {
+        const syncResult = await this.reqSync.syncVersionWithFallback(
+          root,
+          pkg.name,
+          pkg.installedVersion,
+          pkg.source
+        );
+        if (syncResult.outcome !== 'synced') {
+          this.logger.warn(`Post-bulk reconcile failed for ${pkg.name}: ${syncResult.outcome}`);
+        }
+      }
+    }
 
     const msg = failed === 0
       ? `✅ Updated ${succeeded} package${succeeded !== 1 ? 's' : ''} successfully.`

@@ -78,6 +78,27 @@ window.extractPinnedVersion = function (specifiedVersion) {
 };
 
 /**
+ * Normalizes a version for loose equivalence (e.g. 1.0.0 ≈ 1.0).
+ * @param {string} version
+ * @returns {string}
+ */
+window.normalizeVersionCore = function (version) {
+  if (!version) return '';
+  const m = String(version).match(/(\d+(?:\.\d+)*)/);
+  if (!m) return String(version).trim();
+  const parts = m[1].split('.').map(p => String(parseInt(p, 10)));
+  while (parts.length > 1 && parts[parts.length - 1] === '0') {
+    parts.pop();
+  }
+  return parts.join('.');
+};
+
+/** @param {string} a @param {string} b @returns {boolean} */
+window.versionsEquivalent = function (a, b) {
+  return window.normalizeVersionCore(a) === window.normalizeVersionCore(b);
+};
+
+/**
  * Identifies package version drift where the installed package version
  * does not match the exact pin or constraint in requirements.txt.
  * 
@@ -88,7 +109,7 @@ window.computeDrift = function (packages) {
   return packages.filter(pkg => {
     if (!pkg.installedVersion) return false;
     const pinned = window.extractPinnedVersion(pkg.specifiedVersion);
-    return pinned !== null && pinned !== pkg.installedVersion;
+    return pinned !== null && !window.versionsEquivalent(pinned, pkg.installedVersion);
   });
 };
 

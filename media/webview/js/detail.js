@@ -74,8 +74,6 @@ window.showDetail = function (pkg) {
     </div>
   ` : '';
 
-  ` : '';
-
   const releaseDateHtml = pkg.releaseDate
     ? `<div class="field"><label>${window.t ? window.t('detail.released') : 'Released'}</label><div class="field-value">${esc(formatReleaseDate(pkg.releaseDate))}</div></div>`
     : '';

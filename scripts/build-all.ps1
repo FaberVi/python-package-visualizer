@@ -12,6 +12,25 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
+# Native CLIs (cursor/code) may write Node deprecation warnings to stderr even on success.
+# With $ErrorActionPreference = 'Stop', PowerShell treats that as a terminating error.
+function Invoke-EditorCli {
+  param(
+    [Parameter(Mandatory)]
+    [string] $EditorCmd,
+    [Parameter(ValueFromRemainingArguments)]
+    [string[]] $CliArgs
+  )
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $output = & $EditorCmd @CliArgs 2>&1
+    return @{ Output = $output; ExitCode = $LASTEXITCODE }
+  } finally {
+    $ErrorActionPreference = $prevEap
+  }
+}
+
 Push-Location $projectRoot
 
 # Read extension metadata from package.json
@@ -78,8 +97,9 @@ if (-not $failed) {
     # Prefer Cursor CLI when available (this project targets Cursor), fall back to VS Code.
     $editorCmd = if (Get-Command cursor -ErrorAction SilentlyContinue) { 'cursor' } else { 'code' }
     Write-Host "  Installing $vsixFile via $editorCmd (--force)..." -ForegroundColor DarkGray
-    $installOutput = & $editorCmd --install-extension $vsixFile --force 2>&1
-    $exitCode = $LASTEXITCODE
+    $installResult = Invoke-EditorCli -EditorCmd $editorCmd --install-extension $vsixFile --force
+    $installOutput = $installResult.Output
+    $exitCode = $installResult.ExitCode
     $stepTimer.Stop()
 
     # Show the raw output from the editor CLI for transparency
@@ -93,7 +113,8 @@ if (-not $failed) {
     }
     else {
       # Verify the install by checking the installed extensions list
-      $installedRaw = & $editorCmd --list-extensions --show-versions 2>&1
+      $listResult = Invoke-EditorCli -EditorCmd $editorCmd --list-extensions --show-versions
+      $installedRaw = $listResult.Output
       $match = $installedRaw | Select-String -Pattern "$extId@" -SimpleMatch
       if ($match) {
         $installedVersion = ($match -split '@')[1]

@@ -45,7 +45,9 @@ window.i18n.en = {
   'stats.unknown': 'unknown',
   'stats.drift': 'disaligned',
   'stats.vulnerable': 'vulnerable',
+  'stats.stale': 'Stale',
   'stats.conflicts': 'conflicts',
+  'stats.clickToFilter': 'Click to filter',
   // Tabs
   'tab.list': 'Package List',
   'tab.dashboard': 'Dashboard',
@@ -301,11 +303,10 @@ window.i18n.en = {
   // Drift
   'drift.reqPrefix': 'req:',
   // Stale / Deprecation badges
-  'tag.stale': '🕰️ stale',
+  'tag.stale': '🕰️ Stale',
   'tag.staleTitle': 'No release in over 12 months — this package may be unmaintained',
   'tag.abandoned': '⚠️ abandoned?',
   'tag.abandonedTitle': 'No release in over 24 months — this package may be abandoned',
-  'stats.stale': 'stale',
   'detail.freshness': 'Freshness',
   'detail.monthsAgo': '{n} months ago',
   'detail.staleWarning': 'This package may be unmaintained',
@@ -331,6 +332,7 @@ window.i18n.en = {
   'tab.venvHealth': 'Environment',
   'venv.title': 'Environment Health Check',
   'venv.subtitle': 'Diagnostic overview of your Python virtual environment',
+  'venv.scopeHint': 'This tab lists every package installed in the environment (including transitive dependencies). The Package List tab only tracks dependencies declared in your project files (requirements.txt, pyproject.toml, …).',
   'venv.pythonVersion': 'Python Version',
   'venv.pipVersion': 'pip Version',
   'venv.pipUpToDate': '✅ Up to date',

@@ -63,7 +63,7 @@ window.renderTable = function (filtered) {
       const pinned = window.extractPinnedVersion(pkg.specifiedVersion);
       if (pinned) {
         reqVersion = pinned;
-        if (pinned !== pkg.installedVersion) {
+        if (pinned && !window.versionsEquivalent(pinned, pkg.installedVersion)) {
           hasDrift = true;
         }
       }
@@ -425,7 +425,7 @@ window.updateBulkBar = function () {
     const syncsCount = selectedList.filter(p => {
       if (p.specifiedVersion && p.installedVersion) {
         const pinned = window.extractPinnedVersion(p.specifiedVersion);
-        return pinned !== null && pinned !== p.installedVersion;
+        return pinned !== null && !window.versionsEquivalent(pinned, p.installedVersion);
       }
       return false;
     }).length;

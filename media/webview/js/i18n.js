@@ -123,13 +123,19 @@ window.applyStaticTranslations = function () {
   const labelDrift = document.querySelector('#stat-drift-card span:nth-child(3)');
   const labelVuln = document.querySelector('#stat-vuln-card span:nth-child(3)');
   const labelConflict = document.querySelector('#stat-conflict-card span:nth-child(3)');
+  const labelStale = document.querySelector('#stat-stale-card span:nth-child(3)');
 
   if (labelOk) labelOk.textContent = t('stats.upToDate');
   if (labelUpdate) labelUpdate.textContent = t('stats.updatesAvailable');
   if (labelUnknown) labelUnknown.textContent = t('stats.unknown');
   if (labelDrift) labelDrift.textContent = t('stats.drift');
   if (labelVuln) labelVuln.textContent = t('stats.vulnerable');
+  if (labelStale) labelStale.textContent = t('stats.stale');
   if (labelConflict) labelConflict.textContent = t('stats.conflicts');
+
+  document.querySelectorAll('#stats-bar .stat-card.clickable').forEach(card => {
+    card.title = t('stats.clickToFilter');
+  });
 
   document.querySelectorAll('#tab-bar .tab').forEach(tab => {
     const key = tab.dataset.tab;

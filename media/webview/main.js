@@ -375,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const pkg = window.allPackages.find(p => p.name === name);
         if (!pkg?.specifiedVersion || !pkg.installedVersion) return null;
         const pinned = window.extractPinnedVersion(pkg.specifiedVersion);
-        if (!pinned || pinned === pkg.installedVersion) return null;
+        if (!pinned || window.versionsEquivalent(pinned, pkg.installedVersion)) return null;
         return { name: pkg.name, source: pkg.source || '' };
       })
       .filter(Boolean);

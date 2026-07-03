@@ -280,6 +280,9 @@ window.renderVenvHealth = function () {
           🔄 ${window.t('venv.refresh')}
         </button>
       </div>
+      <div style="background:color-mix(in srgb, var(--vscode-textLink-foreground) 8%, transparent);border:1px solid color-mix(in srgb, var(--vscode-textLink-foreground) 25%, transparent);border-left:3px solid var(--vscode-textLink-foreground);border-radius:6px;padding:12px 16px;margin-bottom:20px;font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.55;">
+        ℹ️ ${window.t('venv.scopeHint')}
+      </div>
       ${healthBannerHtml}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:24px;">${cardsHtml}</div>
       ${diagnosticsHtml}

@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none';
              script-src 'nonce-{{NONCE}}' https://d3js.org;
@@ -10,7 +10,7 @@
              style-src-elem 'nonce-{{NONCE}}' {{CSP_SOURCE}} 'unsafe-inline';
              style-src-attr 'unsafe-inline';
              font-src 'none';
-             img-src data: {{CSP_SOURCE}};" />
+             img-src data: {{CSP_SOURCE}};">
   <title>Python Package Visualizer</title>
   {{STYLE_CSS_URI}}
 </head>
@@ -26,9 +26,9 @@
       </div>
     </div>
     <div id="header-actions">
-      <button id="btn-add-pkg" class="hdr-btn" title="Install a new package">&#xFF0B; Add Package</button>
+      <button type="button" id="btn-add-pkg" class="hdr-btn" title="Install a new package">&#xFF0B; Add Package</button>
       <div id="export-wrap">
-        <button id="btn-export" class="hdr-btn" title="Export report">
+        <button type="button" id="btn-export" class="hdr-btn" title="Export report">
           &#x2B06; Export <span class="chevron">&#x25BE;</span>
         </button>
         <div id="export-menu">
@@ -47,7 +47,7 @@
           <div class="export-item" data-action="migrate-poetry">&#x1F3AD; Migrate to Poetry</div>
         </div>
       </div>
-      <button id="btn-refresh" class="hdr-btn" title="Re-scan workspace">
+      <button type="button" id="btn-refresh" class="hdr-btn" title="Re-scan workspace">
         &#x21BB; Refresh
       </button>
       <select id="lang-select" class="toolbar-select" title="Language" style="min-width:auto;padding:4px 8px;font-size:11px;">
@@ -61,7 +61,7 @@
   <div id="toolbar">
     <div id="search-wrap">
       <span id="search-icon">&#x1F50D;</span>
-      <input id="search" type="text" placeholder="Search packages, summaries…" autocomplete="off" spellcheck="false" />
+      <input id="search" type="text" placeholder="Search packages, summaries…" autocomplete="off" spellcheck="false">
     </div>
     <select id="filter-status" class="toolbar-select">
       <option value="all">All statuses</option>
@@ -80,42 +80,42 @@
       <option value="lint">Lint</option>
       <option value="optional">Optional</option>
     </select>
-    <button id="btn-safe-mode" title="Safe Mode: block major-version updates">🛡 Safe Mode</button>
+    <button type="button" id="btn-safe-mode" title="Safe Mode: block major-version updates">🛡 Safe Mode</button>
   </div>
 
   <!-- Stats Bar -->
   <div id="stats-bar">
-    <span class="stat-card ok clickable" id="stat-ok-card" data-filter="up-to-date" title="Click to filter">
+    <span class="stat-card ok clickable" id="stat-ok-card" data-filter="up-to-date">
       <span>✅</span>
       <span class="stat-num" id="stat-ok">0</span>
       <span>up to date</span>
     </span>
-    <span class="stat-card update clickable" id="stat-update-card" data-filter="update-available" title="Click to filter">
+    <span class="stat-card update clickable" id="stat-update-card" data-filter="update-available">
       <span>⬆️</span>
       <span class="stat-num" id="stat-update">0</span>
       <span>updates available</span>
     </span>
-    <span class="stat-card drift clickable" id="stat-drift-card" data-filter="drift" title="Click to filter">
+    <span class="stat-card drift clickable" id="stat-drift-card" data-filter="drift">
       <span>⚠️</span>
       <span class="stat-num" id="stat-drift">0</span>
       <span>disaligned</span>
     </span>
-    <span class="stat-card unknown clickable" id="stat-unknown-card" data-filter="unknown" title="Click to filter">
+    <span class="stat-card unknown clickable" id="stat-unknown-card" data-filter="unknown">
       <span>❓</span>
       <span class="stat-num" id="stat-unknown">0</span>
       <span>unknown</span>
     </span>
-    <span class="stat-card vuln clickable" id="stat-vuln-card" data-filter="vuln" title="Click to filter" style="display:none">
+    <span class="stat-card vuln clickable" id="stat-vuln-card" data-filter="vuln" style="display:none">
       <span>&#x1F534;</span>
       <span class="stat-num" id="stat-vuln">0</span>
       <span>vulnerable</span>
     </span>
-    <span class="stat-card stale clickable" id="stat-stale-card" data-filter="stale" title="Click to filter" style="display:none">
+    <span class="stat-card stale clickable" id="stat-stale-card" data-filter="stale" style="display:none">
       <span>&#x1F570;&#xFE0F;</span>
       <span class="stat-num" id="stat-stale">0</span>
-      <span>stale</span>
+      <span>Stale</span>
     </span>
-    <span class="stat-card conflict clickable" id="stat-conflict-card" data-filter="conflict" title="Click to filter" style="display:none">
+    <span class="stat-card conflict clickable" id="stat-conflict-card" data-filter="conflict" style="display:none">
       <span>&#x26A1;</span>
       <span class="stat-num" id="stat-conflict">0</span>
       <span>conflicts</span>
@@ -186,9 +186,9 @@
     <div id="view-graph">
       <div id="graph-toolbar">
         <span>Scroll to zoom &nbsp;·&nbsp; Drag to pan &nbsp;·&nbsp; Click node to expand / view details</span>
-        <button class="graph-btn" id="graph-fit">⊡ Fit</button>
-        <button class="graph-btn" id="graph-zoom-in">＋</button>
-        <button class="graph-btn" id="graph-zoom-out">－</button>
+        <button type="button" class="graph-btn" id="graph-fit">⊡ Fit</button>
+        <button type="button" class="graph-btn" id="graph-zoom-in">＋</button>
+        <button type="button" class="graph-btn" id="graph-zoom-out">－</button>
       </div>
       <div id="graph-canvas"></div>
     </div>
@@ -224,22 +224,22 @@
     <!-- Bulk Action Bar -->
     <div id="bulk-bar">
       <span id="bulk-count">0 selected</span>
-      <button class="bulk-btn" id="bulk-update">↑ Update Selected</button>
-      <button class="bulk-btn" id="bulk-sync">🔗 Align Selected</button>
-      <button class="bulk-btn danger" id="bulk-deselect">✕ Deselect All</button>
+      <button type="button" class="bulk-btn" id="bulk-update">↑ Update Selected</button>
+      <button type="button" class="bulk-btn" id="bulk-sync">🔗 Align Selected</button>
+      <button type="button" class="bulk-btn danger" id="bulk-deselect">✕ Deselect All</button>
     </div>
 
     <!-- Package List -->
     <div id="view-list">
       <div id="vuln-banner" class="alert-banner">
         <span class="alert-banner-msg">&#x1F534; <strong id="vuln-banner-count">0</strong> package(s) have known security vulnerabilities</span>
-        <button class="alert-banner-action" id="vuln-banner-jump">View affected</button>
-        <button class="alert-banner-dismiss" id="vuln-banner-dismiss" title="Dismiss">&times;</button>
+        <button type="button" class="alert-banner-action" id="vuln-banner-jump">View affected</button>
+        <button type="button" class="alert-banner-dismiss" id="vuln-banner-dismiss" title="Dismiss">&times;</button>
       </div>
       <div id="drift-banner" class="alert-banner">
         <span class="alert-banner-msg">⚠️ <strong id="drift-banner-count">0</strong> package(s) installed version differs from requirements file</span>
-        <button class="alert-banner-action" id="drift-banner-view">View drift</button>
-        <button class="alert-banner-dismiss" id="drift-banner-dismiss" title="Dismiss">&times;</button>
+        <button type="button" class="alert-banner-action" id="drift-banner-view">View drift</button>
+        <button type="button" class="alert-banner-dismiss" id="drift-banner-dismiss" title="Dismiss">&times;</button>
       </div>
       <div id="result-count"></div>
       <table>
@@ -328,7 +328,7 @@
     <div id="view-snapshots" style="display:none">
       <div id="snapshots-header">
         <h3>&#x1F4F8; Environment Snapshots</h3>
-        <button id="btn-take-snapshot">&#x2795; Take Snapshot</button>
+        <button type="button" id="btn-take-snapshot">&#x2795; Take Snapshot</button>
       </div>
       <div id="snapshots-empty" style="display:none">
         <p>No snapshots yet. Take a snapshot to save the current installed state of all packages.</p>
@@ -397,22 +397,22 @@
           <h2>Install New Package</h2>
           <p>Search PyPI and install into your environment</p>
         </div>
-        <button id="add-pkg-close" title="Close">&times;</button>
+        <button type="button" id="add-pkg-close" title="Close">&times;</button>
       </div>
       <div id="add-pkg-body">
         <div id="add-pkg-search-row">
           <input id="add-pkg-input" type="text"
             placeholder="e.g. requests, numpy, fastapi…"
-            autocomplete="off" spellcheck="false" />
-          <button id="add-pkg-search">Search</button>
+            autocomplete="off" spellcheck="false">
+          <button type="button" id="add-pkg-search">Search</button>
         </div>
         <div id="add-pkg-result">
           <span>Type a package name and press <strong>Search</strong> or Enter.</span>
         </div>
       </div>
       <div id="add-pkg-footer">
-        <button id="add-pkg-cancel">Cancel</button>
-        <button id="add-pkg-install" disabled>&#x2B07; Install</button>
+        <button type="button" id="add-pkg-cancel">Cancel</button>
+        <button type="button" id="add-pkg-install" disabled>&#x2B07; Install</button>
       </div>
     </div>
   </div>
@@ -427,8 +427,8 @@
     <div id="tour-title"></div>
     <div id="tour-text"></div>
     <div id="tour-actions">
-      <button id="tour-skip">Skip tour</button>
-      <button id="tour-next">Next →</button>
+      <button type="button" id="tour-skip">Skip tour</button>
+      <button type="button" id="tour-next">Next →</button>
     </div>
   </div>
 
@@ -439,7 +439,7 @@
   <div id="detail-panel">
     <div id="detail-header">
       <span id="detail-name">Package</span>
-      <button id="detail-close" title="Close">&times;</button>
+      <button type="button" id="detail-close" title="Close">&times;</button>
     </div>
     <div id="detail-body"></div>
   </div>

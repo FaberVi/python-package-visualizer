@@ -28,7 +28,7 @@ export class RequirementsHandler {
       return;
     }
     try {
-      const result = await this.reqSync.syncVersion(root, packageName, version, sourceFile);
+      const result = await this.reqSync.syncVersionWithFallback(root, packageName, version, sourceFile);
       this.showSyncOutcome(result, packageName, sourceFile, `📌 Pinned ${packageName} to ==${version} in ${sourceFile}`);
       if (result.outcome === 'synced') {
         await this.refreshCallback();
@@ -63,7 +63,7 @@ export class RequirementsHandler {
     }
 
     try {
-      const result = await this.reqSync.syncVersion(root, packageName, installedVersion, sourceFile);
+      const result = await this.reqSync.syncVersionWithFallback(root, packageName, installedVersion, sourceFile);
       this.showSyncOutcome(
         result,
         packageName,

@@ -45,7 +45,9 @@ window.i18n.it = {
   'stats.unknown': 'Sconosciuti',
   'stats.drift': 'Disallineati',
   'stats.vulnerable': 'Vulnerabili',
+  'stats.stale': 'Obsoleti',
   'stats.conflicts': 'Conflitti',
+  'stats.clickToFilter': 'Clicca per filtrare',
   // Tabs
   'tab.list': 'Lista Pacchetti',
   'tab.dashboard': 'Dashboard',
@@ -302,11 +304,10 @@ window.i18n.it = {
   // Drift
   'drift.reqPrefix': 'req:',
   // Stale / Deprecation badges
-  'tag.stale': '🕰️ obsoleto',
+  'tag.stale': '🕰️ Obsoleto',
   'tag.staleTitle': 'Nessun rilascio da oltre 12 mesi — questo pacchetto potrebbe non essere più mantenuto',
   'tag.abandoned': '⚠️ abbandonato?',
   'tag.abandonedTitle': 'Nessun rilascio da oltre 24 mesi — questo pacchetto potrebbe essere abbandonato',
-  'stats.stale': 'obsoleti',
   'detail.freshness': 'Freschezza',
   'detail.monthsAgo': '{n} mesi fa',
   'detail.staleWarning': 'Questo pacchetto potrebbe non essere più mantenuto',
@@ -332,6 +333,7 @@ window.i18n.it = {
   'tab.venvHealth': 'Ambiente',
   'venv.title': 'Controllo Salute Ambiente',
   'venv.subtitle': 'Panoramica diagnostica del tuo ambiente virtuale Python',
+  'venv.scopeHint': 'Questa scheda elenca tutti i pacchetti installati nell\'ambiente (incluse le dipendenze transitive). La Lista Pacchetti monitora solo le dipendenze dichiarate nei file di progetto (requirements.txt, pyproject.toml, …).',
   'venv.pythonVersion': 'Versione Python',
   'venv.pipVersion': 'Versione pip',
   'venv.pipUpToDate': '✅ Aggiornato',
