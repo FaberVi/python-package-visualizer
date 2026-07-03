@@ -2,11 +2,11 @@
 
 # 📦 Python Package Visualizer
 
-**The ultimate dependency manager for Python projects in VS Code**
+**The ultimate dependency manager for Python projects in VS Code & Cursor**
 
-![Version](https://img.shields.io/badge/version-3.0.2-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.1.1-blue?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![VS Code](https://img.shields.io/badge/vscode-%5E1.85.0-007ACC?style=flat-square&logo=visualstudiocode)
+![VS Code](https://img.shields.io/badge/vscode-%5E1.105.0-007ACC?style=flat-square&logo=visualstudiocode)
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python)
 
 *Visualize, manage, and audit your Python workspace dependencies — all from inside VS Code.*
@@ -54,11 +54,12 @@ Every Python developer has been there: `pip list --outdated` is noisy, `requirem
 
 ## 🚀 Quick Start
 
-1. Open a Python project containing `requirements.txt`, `pyproject.toml`, or `setup.py`
+1. Open a Python project containing `requirements.txt`, `pyproject.toml`, or `setup.py`  
+   *(monorepos are supported — e.g. `backend/requirements.txt` is discovered automatically)*
 2. Click the **📦 icon** in the Activity Bar (left side)
 3. Click **▶ Open Package Visualizer** in the sidebar
 
-That's it. Everything is automatic from there.
+If no dependency file is found, the panel shows an in-app empty state with a **Select requirements file** button — no IDE popup required.
 
 ---
 
@@ -157,6 +158,7 @@ Every code insight is **toggleable from the sidebar** — no need to dig into VS
 - 🔘 Auto-check on open
 - 🔘 Notify on outdated packages
 - 📋 Update check schedule *(Off / Daily / Weekly / Monthly)*
+- 🌐 UI language *(English / Italiano)*
 
 ### Code Insights
 - 🔘 Function metrics *(lines, references, complexity)*
@@ -180,39 +182,42 @@ Inside the Package Visualizer panel:
 
 ---
 
-## 🎯 What's New in v3.0.2
+## 🎯 What's New in v3.1.1
 
-- 📝 **Import Annotations** above every import line with Update/Install quick actions
-- 📊 **Function Metrics** (lines, references, complexity) above every `def`
-- 💡 **Quick-fix CodeLens** — click "Missing docstring" to auto-insert a template
-- 🔍 **Clickable References** — click `🔗 X refs` to open VS Code's Find All References panel
-- 🤖 **Smart Hover Cards** — compact, actionable hover UI with health indicators
-- 💰 **API Cost Hints** for LLM client classes (ChatGroq, ChatOpenAI, etc.)
-- 🎨 **Redesigned tabs** — cleaner Dashboard, Performance, History, Unused, Licenses, Snapshots
-- ⚙️ **Full Settings Panel** in the sidebar with 10 toggles
-- 📦 **Environment Snapshots** — save and restore your full dependency state
-- 🛡️ **Safe Mode** — blocks major-version updates to prevent breaking changes
-- ⚡ **Migration Tools** — convert to uv / Poetry with one click
-- 🚀 **Setup Script Generator** — Bash, PowerShell, and Markdown
+- 🔍 **Robust dependency file discovery** — scans subfolders (e.g. `backend/requirements.txt` in monorepos)
+- 🔗 **`requirements-dev.txt` support** — follows `-r requirements.txt` includes and merges packages correctly
+- 🖥️ **In-panel empty state** — manual file selection from the visualizer UI (EN/IT), no IDE notification popup
+- 🤖 **Cursor AI review** — optional Agent analysis for unused packages (Auto model, codebase search)
+- 🧹 **Smarter unused detection** — dynamic imports, config/Dockerfile references, reduced false positives
+- ⚠️ **Conflict-aware updates** — blocked updates on `pip check` conflicts, revert & force-update actions
+- 🐍 **Global Python guard** — confirmation before install/update when not using a workspace venv
+- 🇮🇹 **Italian localization** — webview, sidebar, tour, and key VS Code messages
+- 🧩 **Cursor compatibility** — engine `^1.105.0`, installable in Cursor via VSIX
 
-See the [CHANGELOG](CHANGELOG.md) for the full history.
+### v3.0.x highlights
+
+- 📝 Import annotations, function metrics, quick-fix CodeLens, smart hover cards
+- 📦 Environment snapshots, Safe Mode, uv/Poetry migration, setup script generator
 
 ---
 
 ## 📋 Supported Project Types
 
-The extension automatically detects and parses:
+The extension automatically detects and parses dependency files **recursively** in the workspace (up to 6 levels deep), skipping `node_modules`, `.git`, `venv`, etc.
 
 | File | Notes |
 |---|---|
-| `requirements.txt` | Main pip format |
-| `requirements-dev.txt`, `requirements-test.txt`, `requirements-prod.txt` | Environment-specific |
+| `requirements.txt` | Main pip format; also found in subfolders (`backend/`, `api/`, …) |
+| `requirements-dev.txt`, `dev-requirements.txt` | Dev deps; `-r requirements.txt` includes are resolved |
+| `requirements-test.txt`, `requirements-prod.txt`, … | Environment-specific variants |
 | `pyproject.toml` | PEP 517/518/621, Poetry, PDM, Hatch, uv |
 | `setup.py` | Legacy setuptools |
 | `setup.cfg` | Declarative setuptools |
 | `Pipfile` | Pipenv |
 
-Virtual environments are auto-detected from: `.venv/`, `venv/`, `env/`, `.env/`.
+Virtual environments are auto-detected from: `.venv/`, `venv/`, `env/`, `.env/` at the workspace root **and** common subfolders (`backend/`, `api/`, `server/`, `python/`).
+
+You can also pick a requirements file manually from the dashboard or the in-panel empty state.
 
 ---
 
@@ -224,9 +229,20 @@ Virtual environments are auto-detected from: `.venv/`, `venv/`, `env/`, `.env/`.
 3. Search **Python Package Visualizer**
 4. Click **Install**
 
-### From VSIX
+### From VSIX (VS Code or Cursor)
+
 ```bash
-code --install-extension python-package-visualizer-3.0.2.vsix
+# VS Code
+code --install-extension python-package-visualizer-3.1.1.vsix
+
+# Cursor
+cursor --install-extension python-package-visualizer-3.1.1.vsix
+```
+
+Or run the full pipeline from the project root:
+
+```powershell
+.\scripts\build-all.ps1
 ```
 
 ---
@@ -237,18 +253,20 @@ code --install-extension python-package-visualizer-3.0.2.vsix
 
 - [Node.js](https://nodejs.org/) **v18+**
 - [npm](https://www.npmjs.com/) (bundled with Node.js)
-- [VS Code](https://code.visualstudio.com/) **^1.107.0**
+- [VS Code](https://code.visualstudio.com/) or [Cursor](https://cursor.com/) **^1.105.0**
 
 ### Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/Elanchezhiyan-P/python-package-visualizer.git
+# Clone the repository (fork with active development)
+git clone https://github.com/D3m0n92/python-package-visualizer.git
 cd python-package-visualizer
 
 # Install dependencies
 npm install
 ```
+
+> Upstream original project: [Elanchezhiyan-P/python-package-visualizer](https://github.com/Elanchezhiyan-P/python-package-visualizer)
 
 ### Build & Install (One Command)
 
@@ -320,6 +338,7 @@ python-package-visualizer/
 │   │   │   ├── confidence.ts     # Unused package confidence scoring
 │   │   │   └── maps.ts           # stdlib, import-to-package mappings
 │   │   ├── packageScanner.ts     # Requirements/pyproject/setup.py parser
+│   │   ├── depFileDiscovery.ts   # Recursive monorepo dep-file search
 │   │   ├── parsers/              # Format-specific parsers
 │   │   ├── requirementsSync.ts   # Pin/unpin/remove from requirements
 │   │   ├── requirementsGenerator.ts
@@ -327,7 +346,8 @@ python-package-visualizer/
 │   │   └── setupScriptGenerator.ts
 │   ├── services/
 │   │   ├── versionChecker.ts     # PyPI API queries
-│   │   └── versionHistoryCache.ts # Local JSON history store
+│   │   ├── versionHistoryCache.ts # Local JSON history store
+│   │   └── cursorAiService.ts    # Cursor Agent integration (unused review)
 │   ├── providers/                # CodeLens, Hover, and Diagnostics providers
 │   ├── ui/
 │   │   ├── webviewPanel.ts       # Main webview panel manager
@@ -397,27 +417,27 @@ python-package-visualizer/
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome!
 
-- 🐛 **Bug reports:** [GitHub Issues](https://github.com/Elanchezhiyan-P/python-package-visualizer/issues)
-- 💡 **Feature requests:** same place — use the `enhancement` label
-- 📖 **Documentation:** [GitHub Wiki](https://github.com/Elanchezhiyan-P/python-package-visualizer/wiki)
+- 🐛 **Bug reports & features:** [D3m0n92/python-package-visualizer — Issues](https://github.com/D3m0n92/python-package-visualizer/issues)
+- 🔼 **Upstream:** [Elanchezhiyan-P/python-package-visualizer](https://github.com/Elanchezhiyan-P/python-package-visualizer)
 
 > **Before submitting a PR**, run `.\scripts\build-all.ps1` and make sure all 5 steps pass cleanly.
 
 ---
 
-## 👤 Author
+## 👥 Credits
 
-**Elanchezhiyan P**
-- 🌐 [codebyelan.in](https://codebyelan.in)
-- 🐙 [github.com/Elanchezhiyan-P](https://github.com/Elanchezhiyan-P)
+| | |
+|---|---|
+| **Original author** | **Elanchezhiyan P** — [codebyelan.in](https://codebyelan.in) · [GitHub](https://github.com/Elanchezhiyan-P) |
+| **Fork maintainer** | **Vincenzo Fabiano** — active development & Cursor integration · [GitHub @D3m0n92](https://github.com/D3m0n92) · [fork](https://github.com/D3m0n92/python-package-visualizer) |
 
 ---
 
 ## 📜 License
 
-MIT © [Elanchezhiyan P](https://codebyelan.in). See [LICENSE](LICENSE) for details.
+MIT © [Elanchezhiyan P](https://codebyelan.in) and contributors. See [LICENSE](LICENSE) for details.
 
 ---
 

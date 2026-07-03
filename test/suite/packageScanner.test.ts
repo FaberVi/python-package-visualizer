@@ -59,7 +59,8 @@ suite('PackageScanner', () => {
     assert.strictEqual(pkgs[3].name, 'scipy');
   });
 
-  test('skips -r includes and -e editable installs', () => {
+  test('follows -r includes when the referenced file exists', () => {
+    fs.writeFileSync(path.join(tmpDir, 'base.txt'), 'numpy\n');
     fs.writeFileSync(
       path.join(tmpDir, 'requirements.txt'),
       [
@@ -71,13 +72,14 @@ suite('PackageScanner', () => {
     );
 
     const pkgs = (scanner as unknown as {
-      parseRequirementsTxt: (f: string) => unknown[];
-    }).parseRequirementsTxt(path.join(tmpDir, 'requirements.txt')) as Array<{
+      parseRequirementsTxt: (f: string, g?: string, r?: string) => unknown[];
+    }).parseRequirementsTxt(path.join(tmpDir, 'requirements.txt'), undefined, tmpDir) as Array<{
       name: string;
     }>;
 
-    assert.strictEqual(pkgs.length, 1);
-    assert.strictEqual(pkgs[0].name, 'requests');
+    assert.strictEqual(pkgs.length, 2);
+    assert.ok(pkgs.some(p => p.name === 'requests'));
+    assert.ok(pkgs.some(p => p.name === 'numpy'));
   });
 
   test('handles line continuations', () => {

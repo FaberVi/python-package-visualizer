@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { VersionChecker } from '../services/versionChecker.js';
 import { ImportScanner } from '../modules/importScanner.js';
+import { PackageScanner } from '../modules/packageScanner.js';
 
 // API cost / model info for known LLM and AI client classes
 const LLM_INFO: Record<string, { provider: string; pricing: string; speed: string; notes?: string }> = {
@@ -41,6 +42,7 @@ export class ImportHoverProvider implements vscode.HoverProvider {
   constructor(
     private readonly checker: VersionChecker,
     private readonly importScanner: ImportScanner,
+    private readonly packageScanner: PackageScanner,
   ) {}
 
   async provideHover(
@@ -127,7 +129,20 @@ export class ImportHoverProvider implements vscode.HoverProvider {
 
     try {
       const result = await this.checker.checkPackage(packageName, '');
-      const md = this.buildPackageCard(result, packageName);
+      let hasConflict = false;
+      const ws = vscode.workspace.workspaceFolders?.[0];
+      if (ws) {
+        try {
+          const conflicts = await this.packageScanner.checkConflicts(ws.uri.fsPath);
+          const norm = packageName.toLowerCase();
+          hasConflict = conflicts.some(
+            c => c.package.toLowerCase() === norm || c.conflictingPackage.toLowerCase() === norm
+          );
+        } catch {
+          // ignore
+        }
+      }
+      const md = this.buildPackageCard(result, packageName, hasConflict);
       return new vscode.Hover(md, wordRange);
     } catch {
       return null;
@@ -140,6 +155,7 @@ export class ImportHoverProvider implements vscode.HoverProvider {
   private buildPackageCard(
     result: import('../services/versionChecker.js').VersionCheckResult,
     packageName: string,
+    hasConflict = false,
   ): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
@@ -176,6 +192,8 @@ export class ImportHoverProvider implements vscode.HoverProvider {
       statusBits.push(`${statusIcon} ${vulnCount} CVE${vulnCount !== 1 ? 's' : ''}`);
     } else if (result.status === 'up-to-date') {
       statusBits.push(`${statusIcon} Up to date`);
+    } else if (hasConflict && result.status === 'update-available') {
+      statusBits.push(`\u26A1 Update blocked (conflict)`);
     } else if (result.status === 'update-available') {
       statusBits.push(`${statusIcon} Update available`);
     }
@@ -193,8 +211,10 @@ export class ImportHoverProvider implements vscode.HoverProvider {
 
     // ── Quick Actions (compact, 2-3 max) ────────────────────────────────────
     const actions: string[] = [];
-    if (result.status === 'update-available') {
+    if (result.status === 'update-available' && !hasConflict) {
       actions.push(`[\u2191 Update](command:extension.updatePackage?${encodeURIComponent(JSON.stringify(packageName))} "pip install --upgrade ${packageName}")`);
+    } else if (hasConflict && result.status === 'update-available') {
+      actions.push(`[\u26A1 Conflict](command:extension.openPackageVisualizer "Open Package Visualizer to revert or force update")`);
     }
     actions.push(`[\u{1F50D} Inspect](command:extension.openPackageVisualizer "Open Package Visualizer")`);
     actions.push(`[PyPI \u2197](https://pypi.org/project/${packageName}/ "View on PyPI")`);

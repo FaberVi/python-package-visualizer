@@ -9,10 +9,14 @@ import { WebviewPanel, ScanStats } from '../../ui/webviewPanel.js';
 import { SidebarProvider } from '../../ui/sidebarProvider.js';
 import { StatusBarManager } from '../../ui/statusBarManager.js';
 import {
-  buildDisplayData,
+  buildEnrichedDisplayData,
   buildConfidenceContext,
   buildHistoryEntries
 } from './visualizer/displayCompiler.js';
+import type { PackageEnrichment } from '../../ui/webviewPanel.js';
+import { UsageReferenceSearch } from '../../modules/import/usageReferenceSearch.js';
+import type { PackageDisplayData, DepFilesEmptyState } from '../../ui/webviewTypes.js';
+import { normalizeName } from '../../modules/import/normalize.js';
 
 /**
  * Handles core workspace package scanning, update checks, auto checks,
@@ -21,7 +25,10 @@ import {
 export class VisualizerHandler {
   private lastPackages: ScannedPackage[] = [];
   private lastCheckResults: VersionCheckResult[] = [];
+  private lastImportedModules = new Set<string>();
+  private lastFilesScanned = 0;
   private readonly importScanner: ImportScanner;
+  private readonly referenceSearch = new UsageReferenceSearch();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -48,6 +55,47 @@ export class VisualizerHandler {
 
   getLastCheckResults(): VersionCheckResult[] {
     return this.lastCheckResults;
+  }
+
+  /** Latest display payload for Cursor AI unused-package analysis. */
+  getUnusedAiScanState(): {
+    packages: PackageDisplayData[];
+    importedModules: Set<string>;
+    filesScanned: number;
+    workspaceRoot: string;
+  } | undefined {
+    const root = this.getWorkspaceRoot();
+    if (!root || this.lastPackages.length === 0) {
+      return undefined;
+    }
+    const packages = buildEnrichedDisplayData(
+      this.lastPackages,
+      this.lastCheckResults,
+      root,
+      this.history
+    );
+    return {
+      packages,
+      importedModules: new Set(this.lastImportedModules),
+      filesScanned: this.lastFilesScanned,
+      workspaceRoot: root,
+    };
+  }
+
+  private packageEnrichment(root: string): PackageEnrichment {
+    return { workspaceRoot: root, history: this.history };
+  }
+
+  private countActionableUpdates(
+    scanned: ScannedPackage[],
+    checkResults: VersionCheckResult[]
+  ): number {
+    const conflicted = new Set(
+      scanned.filter(p => p.hasConflict).map(p => p.name.toLowerCase())
+    );
+    return checkResults.filter(
+      r => r.status === 'update-available' && !conflicted.has(r.packageName.toLowerCase())
+    ).length;
   }
 
   /**
@@ -102,52 +150,11 @@ export class VisualizerHandler {
             'pythonPackageVisualizer.manualRequirementsPath',
             undefined
           );
-          void vscode.window.showWarningMessage(
-            `The selected file "${existingManualPath}" could not be parsed or contains no dependencies. ` +
-            'Please ensure it is a valid requirements.txt, pyproject.toml, setup.py, setup.cfg, or Pipfile.'
-          );
-          this.panel.sendProgress(
-            'No packages found. The selected file could not be parsed.'
-          );
-          this.panel.sendPackages([], []);
-          this.sidebar?.sendPackages([], undefined, 'init');
+          this.sendEmptyDepFilesState({ reason: 'parse-failed', failedPath: existingManualPath });
           return;
         }
 
-        // Fallback for manual selection if zero files were auto-detected
-        const choice = await vscode.window.showInformationMessage(
-          'No Python dependency files were found automatically in the workspace root. Would you like to select a requirements.txt manually?',
-          'Select File...',
-          'Dismiss'
-        );
-
-        if (choice === 'Select File...') {
-          const defaultUri = root ? vscode.Uri.file(root) : undefined;
-          const selectedFiles = await vscode.window.showOpenDialog({
-            defaultUri,
-            canSelectFiles: true,
-            canSelectFolders: false,
-            canSelectMany: false,
-            openLabel: 'Select requirements.txt',
-            filters: {
-              'Python Dependencies': ['txt', 'in', 'toml', 'py', 'cfg', 'Pipfile']
-            }
-          });
-
-          if (selectedFiles && selectedFiles.length > 0) {
-            const selectedPath = selectedFiles[0].fsPath;
-            await this.context.workspaceState.update('pythonPackageVisualizer.manualRequirementsPath', selectedPath);
-            this.logger.info(`Persisted manual requirements path to workspaceState: ${selectedPath}`);
-            void this.showVisualizer();
-            return;
-          }
-        }
-
-        this.panel.sendProgress(
-          'No packages found. Add a requirements.txt, pyproject.toml, or setup.py.'
-        );
-        this.panel.sendPackages([], []);
-        this.sidebar?.sendPackages([], undefined, 'init');
+        this.sendEmptyDepFilesState({ reason: 'not-found' });
         return;
       }
 
@@ -204,6 +211,17 @@ export class VisualizerHandler {
         buildConfidenceContext(scanned, checkResults)
       );
 
+      // Drop packages referenced in configs, Dockerfiles, CI scripts, etc.
+      const refHits = this.referenceSearch.search(root, [...unusedPackages.keys()]);
+      for (const pkg of [...unusedPackages.keys()]) {
+        if (refHits.has(normalizeName(pkg))) {
+          unusedPackages.delete(pkg);
+        }
+      }
+
+      this.lastImportedModules = mergedImportedModules;
+      this.lastFilesScanned = totalFilesScanned;
+
       this.logger.info(
         `Import scan: ${totalFilesScanned} files, ` +
         `${mergedImportedModules.size} modules, ` +
@@ -232,7 +250,13 @@ export class VisualizerHandler {
       this.lastPackages = scanned;
       this.lastCheckResults = checkResults;
 
-      this.panel.sendPackages(scanned, checkResults, unusedPackages, scanStats);
+      this.panel.sendPackages(
+        scanned,
+        checkResults,
+        unusedPackages,
+        scanStats,
+        this.packageEnrichment(root)
+      );
 
       // Perform background conflict analysis across all workspace roots
       Promise.all(roots.map(r => this.scanner.checkConflicts(r))).then(results => {
@@ -241,7 +265,13 @@ export class VisualizerHandler {
           this.logger.info(`Found ${conflicts.length} dependency conflict(s)`);
           const scannedWithConflicts = this.scanner.detectConflicts(scanned, conflicts);
           this.lastPackages = scannedWithConflicts;
-          this.panel.sendPackages(scannedWithConflicts, checkResults, unusedPackages);
+          this.panel.updatePackages(
+            scannedWithConflicts,
+            checkResults,
+            unusedPackages,
+            scanStats,
+            this.packageEnrichment(root)
+          );
         }
         this.panel.sendConflicts(conflicts);
       }).catch(err => {
@@ -253,13 +283,19 @@ export class VisualizerHandler {
       this.panel.sendHistory(historyEntries);
 
       if (this.sidebar) {
-        const displayData = buildDisplayData(scanned, checkResults, unusedPackages);
+        const displayData = buildEnrichedDisplayData(
+          scanned,
+          checkResults,
+          root,
+          this.history,
+          unusedPackages
+        );
         this.sidebar.sendPackages(displayData, scanStats, 'init');
       }
 
-      this.updateStatusBar(checkResults);
+      this.updateStatusBar(checkResults, scanned);
 
-      const outdated = checkResults.filter(r => r.status === 'update-available').length;
+      const outdated = this.countActionableUpdates(scanned, checkResults);
       if (outdated > 0) {
         this.logger.info(`${outdated} package(s) have updates available`);
       }
@@ -318,7 +354,7 @@ export class VisualizerHandler {
 
           this.applyDriftStatus(scanned, checkResults);
 
-          this.updateStatusBar(checkResults);
+          this.updateStatusBar(checkResults, scanned);
 
           // Compile imports from all workspace folders
           const mergedImportedModules = new Set<string>();
@@ -334,16 +370,37 @@ export class VisualizerHandler {
             buildConfidenceContext(scanned, checkResults)
           );
 
+          const conflicts = await this.scanner.checkConflicts(root);
+          const scannedWithConflicts = this.scanner.detectConflicts(scanned, conflicts);
+          this.lastPackages = scannedWithConflicts;
+
           if (this.panel.isVisible()) {
-            this.panel.updatePackages(scanned, checkResults, unusedPackages);
+            this.panel.updatePackages(
+              scannedWithConflicts,
+              checkResults,
+              unusedPackages,
+              undefined,
+              this.packageEnrichment(root)
+            );
+            this.panel.sendConflicts(conflicts);
           }
 
           if (this.sidebar?.isVisible()) {
-            const displayData = buildDisplayData(scanned, checkResults, unusedPackages);
+            const displayData = buildEnrichedDisplayData(
+              scannedWithConflicts,
+              checkResults,
+              root,
+              this.history,
+              unusedPackages
+            );
             this.sidebar.sendPackages(displayData, undefined, 'update');
           }
 
-          const outdated = checkResults.filter(r => r.status === 'update-available');
+          const outdated = checkResults.filter(r => {
+            if (r.status !== 'update-available') return false;
+            const pkg = scannedWithConflicts.find(p => p.name.toLowerCase() === r.packageName.toLowerCase());
+            return !pkg?.hasConflict;
+          });
 
           if (outdated.length === 0) {
             void vscode.window.showInformationMessage(
@@ -407,9 +464,13 @@ export class VisualizerHandler {
 
       this.applyDriftStatus(scanned, checkResults);
 
-      this.updateStatusBar(checkResults);
+      this.updateStatusBar(checkResults, scanned);
 
-      const outdated = checkResults.filter(r => r.status === 'update-available');
+      const outdated = checkResults.filter(r => {
+        if (r.status !== 'update-available') return false;
+        const pkg = scanned.find(p => p.name.toLowerCase() === r.packageName.toLowerCase());
+        return !pkg?.hasConflict;
+      });
 
       if (outdated.length > 0) {
         const names = outdated
@@ -426,7 +487,13 @@ export class VisualizerHandler {
 
         if (choice === 'Show Visualizer') {
           this.panel.show();
-          this.panel.sendPackages(scanned, checkResults);
+          this.panel.sendPackages(
+            scanned,
+            checkResults,
+            undefined,
+            undefined,
+            this.packageEnrichment(root)
+          );
         }
       }
     } catch (err) {
@@ -452,12 +519,19 @@ export class VisualizerHandler {
     }
   }
 
-  private updateStatusBar(checkResults: VersionCheckResult[]): void {
+  private updateStatusBar(checkResults: VersionCheckResult[], scanned?: ScannedPackage[]): void {
     if (!this.statusBar) {
       return;
     }
-    const outdated = checkResults.filter(r => r.status === 'update-available').length;
+    const outdated = scanned
+      ? this.countActionableUpdates(scanned, checkResults)
+      : checkResults.filter(r => r.status === 'update-available').length;
     const vulnerable = checkResults.filter(r => r.vulnerabilities && r.vulnerabilities.length > 0).length;
     this.statusBar.update(outdated, vulnerable, checkResults.length);
+  }
+
+  private sendEmptyDepFilesState(state: DepFilesEmptyState): void {
+    this.panel.sendPackages([], [], undefined, undefined, undefined, state);
+    this.sidebar?.sendPackages([], undefined, 'init');
   }
 }

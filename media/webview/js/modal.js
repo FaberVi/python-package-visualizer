@@ -18,7 +18,9 @@ window.showAlreadyInstalled = function (pkg) {
   if (!elResult || !elInstall) return;
 
   const esc = window.esc || (s => s);
-  const needsUpdate = pkg.latestVersion && pkg.installedVersion && pkg.latestVersion !== pkg.installedVersion && pkg.status === 'update-available';
+  const needsUpdate = pkg.latestVersion && pkg.installedVersion && pkg.latestVersion !== pkg.installedVersion
+    && pkg.status === 'update-available' && !pkg.updateBlockedByConflict;
+  const conflictBlocked = pkg.updateBlockedByConflict || pkg.status === 'conflict-blocked';
 
   elResult.className = 'has-result is-installed';
   elResult.innerHTML = `
@@ -28,7 +30,9 @@ window.showAlreadyInstalled = function (pkg) {
       <span class="apkg-installed-badge">&#x2713; Already installed</span>
     </div>
     <span class="apkg-installed-hint">${
-      needsUpdate
+      conflictBlocked
+        ? `A newer version <strong>v${esc(pkg.latestVersion)}</strong> is available but blocked due to dependency conflicts. Open the Package List to revert or force update.`
+        : needsUpdate
         ? `A newer version <strong>v${esc(pkg.latestVersion)}</strong> is available. Use the <em>Update</em> button in the Package List tab.`
         : `This package is already installed and up to date in your environment.`
     }</span>

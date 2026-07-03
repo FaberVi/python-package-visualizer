@@ -37,13 +37,19 @@ export class ImportCodeLensProvider implements vscode.CodeLensProvider {
     const imports = this.parseImports(document);
     const lenses: vscode.CodeLens[] = [];
 
-    // Look up installed versions for the workspace
+    // Look up installed versions and conflict markers for the workspace
     let installedMap = new Map<string, string>();
+    const conflictedPkgs = new Set<string>();
     const ws = vscode.workspace.workspaceFolders?.[0];
     if (ws) {
       try {
         const scanned = await this.packageScanner.scanWorkspace(ws.uri.fsPath);
         installedMap = new Map(scanned.map(p => [p.name.toLowerCase(), p.installedVersion || '']));
+        const conflicts = await this.packageScanner.checkConflicts(ws.uri.fsPath);
+        for (const conflict of conflicts) {
+          conflictedPkgs.add(conflict.package.toLowerCase());
+          conflictedPkgs.add(conflict.conflictingPackage.toLowerCase());
+        }
       } catch {
         // ignore
       }
@@ -97,12 +103,22 @@ export class ImportCodeLensProvider implements vscode.CodeLensProvider {
           arguments: [],
         }));
       } else if (installedVer && installedVer !== latestVer) {
-        lenses.push(new vscode.CodeLens(imp.range, {
-          title: `\u2191 Update to ${latestVer}`,
-          tooltip: `Run pip install --upgrade ${imp.packageName}`,
-          command: 'extension.updatePackage',
-          arguments: [imp.packageName],
-        }));
+        const hasConflict = conflictedPkgs.has(imp.packageName.toLowerCase());
+        if (hasConflict) {
+          lenses.push(new vscode.CodeLens(imp.range, {
+            title: `\u26A1 Conflict \u2014 blocked update`,
+            tooltip: `Update blocked due to dependency conflicts. Open Package Visualizer to revert or force update.`,
+            command: 'extension.openPackageVisualizer',
+            arguments: [],
+          }));
+        } else {
+          lenses.push(new vscode.CodeLens(imp.range, {
+            title: `\u2191 Update to ${latestVer}`,
+            tooltip: `Run pip install --upgrade ${imp.packageName}`,
+            command: 'extension.updatePackage',
+            arguments: [imp.packageName],
+          }));
+        }
       } else if (!installedVer) {
         lenses.push(new vscode.CodeLens(imp.range, {
           title: `\u2B07 Install`,

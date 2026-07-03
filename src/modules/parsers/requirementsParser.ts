@@ -19,7 +19,8 @@ import {
 export function parseRequirementsTxt(
   filePath: string,
   group: 'main' | 'dev' | 'test' | 'docs' | 'lint' | 'optional' = 'main',
-  visited = new Set<string>()
+  visited = new Set<string>(),
+  workspaceRoot?: string
 ): ScannedPackage[] {
   const environment = getEnvironmentFromFileName(path.basename(filePath));
   if (visited.has(filePath)) { return []; }
@@ -55,8 +56,10 @@ export function parseRequirementsTxt(
   const normalized = content.replace(/\\\n\s*/g, ' ');
   const lines = normalized.split('\n');
 
-  // Use the actual basename so sync/remove/pin operations target the correct file
-  const sourceBasename = path.basename(filePath) as DepFileType;
+  const sourcePath = workspaceRoot
+    ? path.relative(workspaceRoot, filePath).replace(/\\/g, '/')
+    : path.basename(filePath);
+  const sourceForPackages = sourcePath as DepFileType;
 
   for (const rawLine of lines) {
     // Strip inline comments
@@ -70,7 +73,7 @@ export function parseRequirementsTxt(
       const absInclude = path.resolve(path.dirname(filePath), includePath);
       if (fs.existsSync(absInclude)) {
         const includeGroup = getGroupFromFileName(path.basename(absInclude));
-        results.push(...parseRequirementsTxt(absInclude, includeGroup, visited));
+        results.push(...parseRequirementsTxt(absInclude, includeGroup, visited, workspaceRoot));
       }
       continue;
     }
@@ -95,7 +98,7 @@ export function parseRequirementsTxt(
       name: normalizeName(match[1]),
       specifiedVersion: (match[5] ?? '').trim(),
       installedVersion: '',
-      source: sourceBasename,
+      source: sourceForPackages,
       extras: match[4] ? match[4].split(',').map(e => e.trim()) : [],
       requires: [],
       group,

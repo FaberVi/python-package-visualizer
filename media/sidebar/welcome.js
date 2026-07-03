@@ -40,6 +40,12 @@ document.getElementById('link-github-author').addEventListener('click', () =>
 document.getElementById('link-linkedin').addEventListener('click', () =>
   openUrl('https://www.linkedin.com/in/elanchezhiyan-p/')
 );
+document.getElementById('link-github-maintainer').addEventListener('click', () =>
+  openUrl('https://github.com/D3m0n92')
+);
+document.getElementById('link-fork-repo').addEventListener('click', () =>
+  openUrl('https://github.com/D3m0n92/python-package-visualizer')
+);
 
 // ── Settings ─────────────────────────────────────────
 const settingsState = {
@@ -53,7 +59,43 @@ const settingsState = {
   showComplexityWarnings: true,
   showTypeHintCoverage: true,
   showDocstringWarnings: true,
+  language: 'en',
 };
+
+/**
+ * Returns the visible label for a custom select option.
+ */
+function getCustomSelectLabel(selectEl, value) {
+  const option = selectEl.querySelector(`.custom-select-option[data-value="${value}"]`);
+  return option ? option.textContent.trim() : value;
+}
+
+/**
+ * Updates a custom select UI to reflect the chosen value.
+ */
+function setCustomSelectValue(selectEl, value) {
+  const labelEl = selectEl.querySelector('.custom-select-label');
+  const options = selectEl.querySelectorAll('.custom-select-option');
+  options.forEach(option => {
+    option.classList.toggle('selected', option.dataset.value === value);
+  });
+  if (labelEl) {
+    labelEl.textContent = getCustomSelectLabel(selectEl, value);
+  }
+}
+
+/**
+ * Closes every open custom select dropdown.
+ */
+function closeAllCustomSelects(except) {
+  document.querySelectorAll('.custom-select.open').forEach(selectEl => {
+    if (selectEl !== except) {
+      selectEl.classList.remove('open');
+      const trigger = selectEl.querySelector('.custom-select-trigger');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
 
 // Request current settings from extension
 vscode.postMessage({ type: 'getSettings' });
@@ -72,15 +114,10 @@ function applySettings(s) {
     if (settingsState[key]) el.classList.add('on');
     else el.classList.remove('on');
   });
-  document.querySelectorAll('.setting-select').forEach(el => {
+  document.querySelectorAll('.custom-select').forEach(el => {
     const key = el.dataset.setting;
-    if (settingsState[key]) el.value = settingsState[key];
+    if (settingsState[key]) setCustomSelectValue(el, settingsState[key]);
   });
-  // Language selector
-  const langSel = document.getElementById('sidebar-lang-select');
-  if (langSel && settingsState.language) {
-    langSel.value = settingsState.language;
-  }
 }
 
 // Toggle handler
@@ -95,25 +132,36 @@ document.querySelectorAll('.toggle-switch').forEach(el => {
   });
 });
 
-// Select handler
-document.querySelectorAll('.setting-select').forEach(el => {
-  el.addEventListener('change', () => {
-    const key = el.dataset.setting;
-    const value = el.value;
-    settingsState[key] = value;
-    vscode.postMessage({ type: 'updateSetting', key, value });
+// Custom select handlers
+document.querySelectorAll('.custom-select').forEach(selectEl => {
+  const trigger = selectEl.querySelector('.custom-select-trigger');
+  const options = selectEl.querySelectorAll('.custom-select-option');
+
+  trigger?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const willOpen = !selectEl.classList.contains('open');
+    closeAllCustomSelects(selectEl);
+    selectEl.classList.toggle('open', willOpen);
+    trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  });
+
+  options.forEach(option => {
+    option.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const key = selectEl.dataset.setting;
+      const value = option.dataset.value;
+      if (!key || !value) return;
+
+      settingsState[key] = value;
+      setCustomSelectValue(selectEl, value);
+      selectEl.classList.remove('open');
+      trigger?.setAttribute('aria-expanded', 'false');
+      vscode.postMessage({ type: 'updateSetting', key, value });
+    });
   });
 });
 
-// Language selector handler
-const langSelect = document.getElementById('sidebar-lang-select');
-if (langSelect) {
-  langSelect.addEventListener('change', () => {
-    const value = langSelect.value;
-    settingsState.language = value;
-    vscode.postMessage({ type: 'updateSetting', key: 'language', value });
-  });
-}
+document.addEventListener('click', () => closeAllCustomSelects());
 
 window.addEventListener('message', event => {
   const msg = event.data;

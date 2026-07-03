@@ -13,7 +13,7 @@ import { Logger } from '../utils/logger.js';
 import type { VersionCheckResult } from '../services/versionChecker.js';
 import type { ScannedPackage, ConflictInfo } from '../modules/packageScanner.js';
 import type { UnusedPackageInfo } from '../modules/importScanner.js';
-import { buildDisplayData } from '../commands/handlers/visualizer/displayCompiler.js';
+import { buildDisplayData, buildEnrichedDisplayData } from '../commands/handlers/visualizer/displayCompiler.js';
 import { compileWebviewHtml } from './webviewHtmlCompiler.js';
 
 // Re-export types for backward compatibility with existing importers
@@ -29,12 +29,25 @@ import type {
   ScanStats,
   PackageDisplayData,
   VenvHealthReport,
+  DepFilesEmptyState,
 } from './webviewTypes.js';
+import type { VersionHistoryCache } from '../services/versionHistoryCache.js';
+
+export type PackageEnrichment = {
+  workspaceRoot: string;
+  history: VersionHistoryCache;
+};
 
 export class WebviewPanel {
   private panel: vscode.WebviewPanel | undefined;
   private messageHandlers: Array<(msg: WebviewMessage) => void> = [];
-  private pendingMessage: { type: 'init' | 'update'; packages: PackageDisplayData[]; scanStats?: ScanStats } | undefined;
+  private pendingMessage: {
+    type: 'init' | 'update';
+    packages: PackageDisplayData[];
+    scanStats?: ScanStats;
+    language?: string;
+    depFilesEmpty?: DepFilesEmptyState;
+  } | undefined;
   private isReady = false;
 
   constructor(
@@ -73,11 +86,11 @@ export class WebviewPanel {
         this.logger.debug(`Webview message: ${msg.type}`);
         if (msg.type === 'ready') {
           this.isReady = true;
-          // Flush any message that arrived before webview was ready
           if (this.pendingMessage) {
             void this.panel?.webview.postMessage(this.pendingMessage);
             this.pendingMessage = undefined;
           }
+          this.messageHandlers.forEach(h => h(msg));
           return;
         }
         // Handle settings updates directly (e.g., language change)
@@ -115,13 +128,18 @@ export class WebviewPanel {
     scanned: ScannedPackage[],
     checkResults: VersionCheckResult[],
     unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
-    scanStats?: ScanStats
+    scanStats?: ScanStats,
+    enrich?: PackageEnrichment,
+    depFilesEmpty?: DepFilesEmptyState
   ): void {
     if (!this.panel) {
       return;
     }
     const language = vscode.workspace.getConfiguration('pythonPackageVisualizer').get<string>('language', 'en');
-    const msg = { type: 'init' as const, packages: buildDisplayData(scanned, checkResults, unusedPackages), scanStats, language };
+    const packages = enrich
+      ? buildEnrichedDisplayData(scanned, checkResults, enrich.workspaceRoot, enrich.history, unusedPackages)
+      : buildDisplayData(scanned, checkResults, unusedPackages);
+    const msg = { type: 'init' as const, packages, scanStats, language, depFilesEmpty };
     if (this.isReady) {
       void this.panel.webview.postMessage(msg);
     } else {
@@ -134,13 +152,17 @@ export class WebviewPanel {
     scanned: ScannedPackage[],
     checkResults: VersionCheckResult[],
     unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
-    scanStats?: ScanStats
+    scanStats?: ScanStats,
+    enrich?: PackageEnrichment
   ): void {
     if (!this.panel) {
       return;
     }
     const language = vscode.workspace.getConfiguration('pythonPackageVisualizer').get<string>('language', 'en');
-    const msg = { type: 'update' as const, packages: buildDisplayData(scanned, checkResults, unusedPackages), scanStats, language };
+    const packages = enrich
+      ? buildEnrichedDisplayData(scanned, checkResults, enrich.workspaceRoot, enrich.history, unusedPackages)
+      : buildDisplayData(scanned, checkResults, unusedPackages);
+    const msg = { type: 'update' as const, packages, scanStats, language };
     if (this.isReady) {
       void this.panel.webview.postMessage(msg);
     } else {
@@ -185,6 +207,31 @@ export class WebviewPanel {
       return;
     }
     void this.panel.webview.postMessage({ type: 'venvHealth', report });
+  }
+
+  /** Send IDE / Cursor AI capability info to the webview */
+  sendIdeCapabilities(caps: {
+    isCursor: boolean;
+    ideName: string;
+    canOpenChat: boolean;
+    enabled: boolean;
+    useAutoModel?: boolean;
+  }): void {
+    if (!this.panel) {
+      return;
+    }
+    void this.panel.webview.postMessage({ type: 'ideCapabilities', ...caps });
+  }
+
+  /** Notify webview that Cursor AI analysis was started */
+  sendUnusedAiResult(result: {
+    analyzed: number;
+    referenceHits: Record<string, Array<{ file: string; line: number; snippet: string }>>;
+  }): void {
+    if (!this.panel) {
+      return;
+    }
+    void this.panel.webview.postMessage({ type: 'unusedAiResult', ...result });
   }
 
   dispose(): void {

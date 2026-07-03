@@ -3,12 +3,29 @@ import { UnusedPackageInfo, UnusedConfidenceContext } from '../../../modules/imp
 import { VersionCheckResult } from '../../../services/versionChecker.js';
 import type { PackageDisplayData, HistoryDisplayEntry } from '../../../ui/webviewPanel.js';
 import type { VersionHistoryEntry } from '../../../services/versionHistoryCache.js';
+import type { VersionHistoryCache } from '../../../services/versionHistoryCache.js';
 import { getAlternatives } from '../../../data/alternativesMap.js';
 
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/g, '-');
 
 /** Flattened history row shape returned by VersionHistoryCache.getFullHistory() */
 type FlatHistoryEntry = { packageName: string } & VersionHistoryEntry;
+
+/**
+ * Builds display payload and attaches rollback version history when available.
+ */
+export function buildEnrichedDisplayData(
+  scanned: ScannedPackage[],
+  checkResults: VersionCheckResult[],
+  workspaceRoot: string,
+  history: VersionHistoryCache,
+  unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>
+): PackageDisplayData[] {
+  return buildDisplayData(scanned, checkResults, unusedPackages).map(pkg => ({
+    ...pkg,
+    previousVersion: history.getPreviousVersion(workspaceRoot, pkg.name),
+  }));
+}
 
 /**
  * Builds history entries payload from raw cache database models.
@@ -47,6 +64,13 @@ export function buildDisplayData(
     const result = resultMap.get(pkg.name);
     const normName = normalize(pkg.name);
 
+    let status = result?.status ?? 'unknown';
+    const updateBlockedByConflict =
+      Boolean(pkg.hasConflict) && status === 'update-available';
+    if (updateBlockedByConflict) {
+      status = 'conflict-blocked';
+    }
+
     let isUsed = true;
     let unusedConfidence: number | undefined;
     let unusedReasons: string[] | undefined;
@@ -68,7 +92,7 @@ export function buildDisplayData(
       name: pkg.name,
       installedVersion: pkg.installedVersion,
       latestVersion: result?.latestVersion ?? 'unknown',
-      status: result?.status ?? 'unknown',
+      status,
       allVersions: result?.allVersions ?? [],
       summary: result?.summary ?? '',
       homePage: result?.homePage ?? '',
@@ -86,6 +110,7 @@ export function buildDisplayData(
       weeklyDownloads: result?.weeklyDownloads ?? 0,
       environment: pkg.environment,
       hasConflict: pkg.hasConflict ?? false,
+      updateBlockedByConflict,
       pythonCompatible: result?.pythonCompatible,
       pythonWarning: result?.pythonWarning,
       installSize: result?.installSize,

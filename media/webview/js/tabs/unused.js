@@ -141,8 +141,21 @@ window.renderUnused = function () {
 
   elUnused.innerHTML = `
     <div style="max-width:1100px;margin:0 auto;padding:24px;width:100%;box-sizing:border-box;">
-      <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);margin-bottom:4px;">${window.t('unused.title')}</div>
-      <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:20px;">${window.t('unused.subtitle')}</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4px;flex-wrap:wrap;">
+        <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);">${window.t('unused.title')}</div>
+        ${window.cursorAiAvailable ? `
+          <button id="btn-cursor-ai-unused" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
+            ✨ ${window.t('unused.cursorAiBtn')}
+          </button>
+        ` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:12px;">${window.t('unused.subtitle')}</div>
+      ${window.cursorAiAvailable ? `
+        <div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.25);border-left:3px solid #7c3aed;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--vscode-foreground);line-height:1.5;">
+          ${window.t(window.cursorAiUseAutoModel !== false ? 'unused.cursorAiHint' : 'unused.cursorAiHintNoAuto').replace('{ide}', window.esc(window.cursorIdeName || 'Cursor'))}
+        </div>
+      ` : ''}
+      <div id="unused-ai-result" style="display:none;margin-bottom:16px;"></div>
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
         <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;padding:14px 16px;text-align:center;">
@@ -184,6 +197,15 @@ window.renderUnused = function () {
     </div>
   `;
 
+  const cursorBtn = document.getElementById('btn-cursor-ai-unused');
+  if (cursorBtn) {
+    cursorBtn.addEventListener('click', () => {
+      cursorBtn.disabled = true;
+      cursorBtn.textContent = window.t('unused.cursorAiRunning');
+      window.vscode.postMessage({ type: 'cursorAnalyzeUnused' });
+    });
+  }
+
   // Wire up Remove buttons
   elUnused.querySelectorAll('.unused-remove-btn').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -218,4 +240,27 @@ window.updateUnusedBadge = function (packages) {
   if (tab) {
     tab.textContent = count > 0 ? `${window.t('tab.unused')} (${count})` : window.t('tab.unused');
   }
+};
+
+/**
+ * Renders the result banner after Cursor AI analysis is triggered.
+ * @param {object} result
+ */
+window.renderUnusedAiResult = function (result) {
+  const el = document.getElementById('unused-ai-result');
+  const btn = document.getElementById('btn-cursor-ai-unused');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `✨ ${window.t('unused.cursorAiBtn')}`;
+  }
+  if (!el || !result) return;
+
+  const refCount = Object.keys(result.referenceHits || {}).length;
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.3);border-radius:6px;padding:10px 14px;font-size:11px;color:var(--vscode-foreground);">
+      ${window.t('unused.cursorAiSent').replace('{n}', result.analyzed)}
+      ${refCount > 0 ? ` ${window.t('unused.cursorAiRefs').replace('{n}', refCount)}` : ''}
+    </div>
+  `;
 };

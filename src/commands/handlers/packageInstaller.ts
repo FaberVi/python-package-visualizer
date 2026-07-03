@@ -31,6 +31,9 @@ export class PackageInstaller {
     if (!root) {
       return;
     }
+    if (!(await this.confirmInstallTarget(root))) {
+      return;
+    }
 
     const { exe, args } = await this.buildInstallSpawnArgs([packageName, '--upgrade'], root);
     this.logger.info(`Updating: ${exe} ${args.join(' ')}`);
@@ -70,6 +73,9 @@ export class PackageInstaller {
   async rollbackPackage(packageName: string, version: string): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root) {
+      return;
+    }
+    if (!(await this.confirmInstallTarget(root))) {
       return;
     }
 
@@ -125,6 +131,9 @@ export class PackageInstaller {
     if (!root || !names.length) {
       return;
     }
+    if (!(await this.confirmInstallTarget(root))) {
+      return;
+    }
 
     let succeeded = 0;
     let failed = 0;
@@ -143,8 +152,23 @@ export class PackageInstaller {
             increment: 100 / names.length,
           });
           try {
-            const cmd = await this.buildInstallCmd(`"${name}" --upgrade`, root);
-            await this.runPip(cmd, root);
+            const { exe, args } = await this.buildInstallSpawnArgs([name, '--upgrade'], root);
+            await this.runInstallTracked(exe, args, root, name);
+
+            const scanned = await this.scanner.scanWorkspace(root);
+            const pkg = scanned.find(p => p.name === name);
+            if (pkg?.installedVersion) {
+              const syncResult = await this.reqSync.syncVersion(
+                root,
+                name,
+                pkg.installedVersion,
+                pkg.source
+              );
+              if (syncResult.outcome !== 'synced') {
+                this.logger.warn(`Post-update sync skipped for ${name}: ${syncResult.outcome}`);
+              }
+            }
+
             succeeded++;
           } catch (err) {
             failed++;
@@ -169,6 +193,9 @@ export class PackageInstaller {
   async installNewPackage(packageName: string, version?: string): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root || !packageName.trim()) {
+      return;
+    }
+    if (!(await this.confirmInstallTarget(root))) {
       return;
     }
     const pkgSpec = version ? `${packageName}==${version}` : packageName;
@@ -204,6 +231,34 @@ export class PackageInstaller {
       this.logger.error(`Install failed: ${String(err)}`);
       void vscode.window.showErrorMessage(`Python Packages: Failed to install ${packageName}`);
     }
+  }
+
+  /**
+   * Asks for confirmation when pip would target a non-project interpreter.
+   */
+  private async confirmInstallTarget(root: string): Promise<boolean> {
+    if (!this.scanner.willUseGlobalPython(root)) {
+      return true;
+    }
+
+    const python = this.scanner.resolvePythonPath();
+    const lang = vscode.workspace
+      .getConfiguration('pythonPackageVisualizer')
+      .get<string>('language', 'en');
+    const isIt = lang === 'it';
+    const displayPath = python.length > 72 ? `...${python.slice(-69)}` : python;
+    const message = isIt
+      ? `I pacchetti verranno installati/aggiornati nell'interprete Python globale o esterno:\n${displayPath}\n\nNon verrà usato un virtual environment del progetto (.venv, venv, env). Procedere?`
+      : `Packages will be installed/updated in the global or external Python interpreter:\n${displayPath}\n\nNo project virtual environment (.venv, venv, env) will be used. Continue?`;
+    const proceed = isIt ? 'Procedi' : 'Continue';
+    const cancel = isIt ? 'Annulla' : 'Cancel';
+    const choice = await vscode.window.showWarningMessage(
+      message,
+      { modal: true },
+      proceed,
+      cancel
+    );
+    return choice === proceed;
   }
 
   /**

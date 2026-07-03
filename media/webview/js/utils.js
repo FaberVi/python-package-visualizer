@@ -188,6 +188,7 @@ window.statusBadge = function (status) {
   const labels = {
     'up-to-date':       window.t('status.upToDate'),
     'update-available': window.t('status.updateAvailable'),
+    'conflict-blocked': window.t('status.conflictBlocked'),
     'not-installed':    window.t('status.notInstalled'),
     'drift':            window.t('status.drift'),
     'unknown':          window.t('status.unknown'),
@@ -233,17 +234,35 @@ window.hideLoading = function () {
 /**
  * Displays an empty-state panel when no valid python dependency files are found.
  * Provides helpful diagnostic directions to resolve requirements setup.
+ *
+ * @param {object} [state] - { reason: 'not-found' | 'parse-failed', failedPath?: string }
  */
-window.showEmpty = function () {
-  const elEmpty   = document.getElementById('empty-state');
-  const elGraph   = document.getElementById('view-graph');
-  const elList    = document.getElementById('view-list');
-  const elUnused  = document.getElementById('view-unused');
-  const elHistory = document.getElementById('view-history');
-  
+window.showEmpty = function (state) {
+  const reason = state?.reason || 'not-found';
+  const elEmpty = document.getElementById('empty-state');
+  const elTitle = document.querySelector('#empty-state .empty-title');
+  const elDesc = document.querySelector('#empty-state p');
+
+  if (elTitle) {
+    elTitle.textContent = reason === 'parse-failed'
+      ? window.t('empty.parseFailedTitle')
+      : window.t('empty.noPythonTitle');
+  }
+  if (elDesc) {
+    elDesc.textContent = reason === 'parse-failed'
+      ? window.t('empty.parseFailedDesc').replace('{path}', state?.failedPath || '')
+      : window.t('empty.autoNotFoundDesc');
+  }
+
+  const viewIds = [
+    'view-graph', 'view-list', 'view-unused', 'view-history',
+    'view-dashboard', 'view-performance', 'view-licenses',
+    'view-snapshots', 'view-conflicts', 'view-venv-health'
+  ];
+  for (const id of viewIds) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  }
+
   if (elEmpty) elEmpty.style.display = 'flex';
-  if (elGraph) elGraph.style.display = 'none';
-  if (elList) elList.style.display = 'none';
-  if (elUnused) elUnused.style.display = 'none';
-  if (elHistory) elHistory.style.display = 'none';
 };

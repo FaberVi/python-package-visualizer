@@ -46,6 +46,9 @@ window.setLanguage = function (lang) {
   if (typeof window.applyStaticTranslations === 'function') {
     window.applyStaticTranslations();
   }
+  if (document.getElementById('tour-tooltip')?.classList.contains('active') && typeof window.showTourStep === 'function') {
+    window.showTourStep();
+  }
   if (typeof window.renderAll === 'function') {
     window.renderAll();
   }
@@ -130,8 +133,10 @@ window.applyStaticTranslations = function () {
 
   document.querySelectorAll('#tab-bar .tab').forEach(tab => {
     const key = tab.dataset.tab;
-    if (key === 'list') tab.textContent = t('tab.list');
     if (key === 'dashboard') tab.textContent = t('tab.dashboard');
+    if (key === 'list') tab.textContent = t('tab.list');
+    if (key === 'venv-health') tab.textContent = t('tab.venvHealth');
+    if (key === 'conflicts') tab.textContent = t('tab.conflicts');
     if (key === 'unused') tab.textContent = t('tab.unused');
     if (key === 'graph') tab.textContent = t('tab.graph');
     if (key === 'performance') tab.textContent = t('tab.performance');
@@ -206,5 +211,28 @@ window.applyStaticTranslations = function () {
   if (elBulkUpdate) elBulkUpdate.textContent = t('bulk.updateSelected');
   if (elBulkSync) elBulkSync.innerHTML = t('bulk.syncSelected');
   if (elBulkDeselect) elBulkDeselect.textContent = t('bulk.deselectAll');
+
+  const emptyTitle = document.querySelector('#empty-state .empty-title');
+  const emptyDesc = document.querySelector('#empty-state p');
+  const emptyFileDescs = document.querySelectorAll('#empty-state .empty-file-desc');
+  const emptySelectManual = document.getElementById('empty-select-manual');
+  const emptyRefresh = document.getElementById('empty-refresh');
+  if (emptyTitle && !window.depFilesEmpty) emptyTitle.textContent = t('empty.noPythonTitle');
+  if (emptyDesc && !window.depFilesEmpty) emptyDesc.textContent = t('empty.autoNotFoundDesc');
+  if (emptyFileDescs[0]) emptyFileDescs[0].textContent = t('empty.stdPip');
+  if (emptyFileDescs[1]) emptyFileDescs[1].textContent = t('empty.modernConfig');
+  if (emptyFileDescs[2]) emptyFileDescs[2].textContent = t('empty.legacySetup');
+  if (emptySelectManual) emptySelectManual.textContent = t('empty.selectManual');
+  if (emptyRefresh) emptyRefresh.innerHTML = `&#x21BB; ${t('header.refresh')}`;
+
+  const tourSkip = document.getElementById('tour-skip');
+  const tourNext = document.getElementById('tour-next');
+  if (tourSkip) tourSkip.textContent = t('tour.skip');
+  if (tourNext && !document.getElementById('tour-tooltip')?.classList.contains('active')) {
+    tourNext.textContent = t('tour.next');
+  }
+  if (document.getElementById('tour-tooltip')?.classList.contains('active') && typeof window.showTourStep === 'function') {
+    window.showTourStep();
+  }
 };
 

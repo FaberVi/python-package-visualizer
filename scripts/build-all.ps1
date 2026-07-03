@@ -75,12 +75,14 @@ if (-not $failed) {
     # WHY: --force overwrites the existing version without needing uninstall first.
     # This is more reliable than uninstall+install, which can fail silently
     # when the extension is currently loaded by VS Code.
-    Write-Host "  Installing $vsixFile (--force)..." -ForegroundColor DarkGray
-    $installOutput = & code --install-extension $vsixFile --force 2>&1
+    # Prefer Cursor CLI when available (this project targets Cursor), fall back to VS Code.
+    $editorCmd = if (Get-Command cursor -ErrorAction SilentlyContinue) { 'cursor' } else { 'code' }
+    Write-Host "  Installing $vsixFile via $editorCmd (--force)..." -ForegroundColor DarkGray
+    $installOutput = & $editorCmd --install-extension $vsixFile --force 2>&1
     $exitCode = $LASTEXITCODE
     $stepTimer.Stop()
 
-    # Show the raw output from code CLI for transparency
+    # Show the raw output from the editor CLI for transparency
     foreach ($line in $installOutput) {
       Write-Host "  $line" -ForegroundColor DarkGray
     }
@@ -91,7 +93,7 @@ if (-not $failed) {
     }
     else {
       # Verify the install by checking the installed extensions list
-      $installedRaw = & code --list-extensions --show-versions 2>&1
+      $installedRaw = & $editorCmd --list-extensions --show-versions 2>&1
       $match = $installedRaw | Select-String -Pattern "$extId@" -SimpleMatch
       if ($match) {
         $installedVersion = ($match -split '@')[1]
@@ -100,7 +102,7 @@ if (-not $failed) {
         }
         else {
           Write-Host "  ! Installed version is $installedVersion, expected $extVersion" -ForegroundColor Yellow
-          Write-Host "  ! VS Code may need a restart to pick up the new version." -ForegroundColor Yellow
+          Write-Host "  ! $editorCmd may need a restart to pick up the new version." -ForegroundColor Yellow
         }
       }
       else {

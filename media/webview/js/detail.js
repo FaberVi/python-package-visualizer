@@ -74,6 +74,8 @@ window.showDetail = function (pkg) {
     </div>
   ` : '';
 
+  ` : '';
+
   const releaseDateHtml = pkg.releaseDate
     ? `<div class="field"><label>${window.t ? window.t('detail.released') : 'Released'}</label><div class="field-value">${esc(formatReleaseDate(pkg.releaseDate))}</div></div>`
     : '';
@@ -103,6 +105,22 @@ window.showDetail = function (pkg) {
       </div>
     </div>`;
   }
+
+  const isConflictBlocked = pkg.status === 'conflict-blocked' || pkg.updateBlockedByConflict;
+  const conflictActionsHtml = isConflictBlocked ? (() => {
+    const parts = [];
+    if (pkg.previousVersion) {
+      parts.push(`<button class="action-btn detail-rollback-btn" data-name="${esc(pkg.name)}" data-version="${esc(pkg.previousVersion)}">${window.t ? window.t('btn.revertPrevious') : '↩ Revert'}</button>`);
+    }
+    if (pkg.latestVersion && pkg.latestVersion !== 'unknown') {
+      parts.push(`<button class="action-btn detail-force-update-btn" data-name="${esc(pkg.name)}">${window.t ? window.t('btn.forceUpdate') : '⬆ Force update'}</button>`);
+    }
+    if (!parts.length) return '';
+    return `<div class="field">
+      <label style="color:#f97316">&#x26A1; ${window.t ? window.t('conflicts.blockedHint') : 'Updates blocked while conflicts exist'}</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">${parts.join('')}</div>
+    </div>`;
+  })() : '';
 
   const pypiLinkHtml = `<div class="field"><label>${window.t ? window.t('detail.pypiPage') : 'PyPI Page'}</label><div class="field-value"><span style="cursor:pointer;color:var(--vscode-textLink-foreground)" class="detail-pypi-link" data-name="${esc(pkg.name)}">${esc(pkg.name)} &#x2197;</span></div></div>`;
 
@@ -153,6 +171,7 @@ window.showDetail = function (pkg) {
     ${pypiLinkHtml}
     ${pkg.requires && pkg.requires.length ? `<div class="field"><label>${window.t ? window.t('detail.requires') : 'Requires'} (${pkg.requires.length})</label><div class="field-value" style="color:var(--vscode-descriptionForeground);line-height:1.7">${pkg.requires.map(r => `<code>${esc(r)}</code>`).join(' ')}</div></div>` : ''}
     ${conflictsHtml}
+    ${conflictActionsHtml}
     ${vulnHtml}
     ${alternativesHtml}
     ${history.length ? `<div class="field"><label>${window.t ? window.t('detail.availableVersions') : 'Available versions'}</label><div style="margin-top:6px;line-height:1.8">${versionChips}</div></div>` : ''}
@@ -185,6 +204,34 @@ window.showDetail = function (pkg) {
       }
       elDetail.style.display = 'none';
       elOverlay.style.display = 'none';
+    });
+  });
+
+  elDetailBody.querySelectorAll('.detail-rollback-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (vscode && btn.dataset.name && btn.dataset.version) {
+        btn.disabled = true;
+        vscode.postMessage({
+          type: 'rollbackPackage',
+          name: btn.dataset.name,
+          version: btn.dataset.version,
+        });
+      }
+      elDetail.style.display = 'none';
+      elOverlay.style.display = 'none';
+    });
+  });
+
+  elDetailBody.querySelectorAll('.detail-force-update-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      if (!name) return;
+      window.showForceUpdateConfirmDialog?.(name, () => {
+        btn.disabled = true;
+        if (vscode) vscode.postMessage({ type: 'forceUpdatePackage', name });
+        elDetail.style.display = 'none';
+        elOverlay.style.display = 'none';
+      });
     });
   });
 

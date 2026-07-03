@@ -127,11 +127,11 @@
 
   <!-- Tab Bar -->
   <div id="tab-bar">
-    <div class="tab active" data-tab="list">Package List</div>
     <div class="tab" data-tab="dashboard">Dashboard</div>
-    <div class="tab" data-tab="unused">Unused Packages</div>
+    <div class="tab active" data-tab="list">Package List</div>
     <div class="tab" data-tab="venv-health">Environment</div>
     <div class="tab" data-tab="conflicts">Conflicts</div>
+    <div class="tab" data-tab="unused">Unused Packages</div>
     <div class="tab" data-tab="graph">Dependency Graph</div>
     <div class="tab" data-tab="performance">Performance</div>
     <div class="tab" data-tab="history">History</div>
@@ -177,7 +177,8 @@
         </div>
       </div>
       <div class="empty-actions">
-        <button class="empty-btn" onclick="document.getElementById('btn-refresh').click()">&#x21BB; Refresh</button>
+        <button class="empty-btn" id="empty-select-manual" type="button">Select requirements file…</button>
+        <button class="empty-btn empty-btn-secondary" id="empty-refresh" type="button">&#x21BB; Refresh</button>
       </div>
     </div>
 

@@ -13,6 +13,7 @@ import { FunctionMetricsCodeLensProvider } from './providers/functionCodeLens.js
 import { FunctionHoverProvider } from './providers/functionHover.js';
 import { registerFunctionQuickFixes } from './providers/functionQuickFixes.js';
 import { ImportScanner } from './modules/importScanner.js';
+import { detectIde } from './utils/ideDetector.js';
 
 let _panel: WebviewPanel | undefined;
 
@@ -30,7 +31,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     _panel = panel;
 
-    // Register the sidebar webview view provider
+    const ide = detectIde();
+    logger.info(`Running in ${ide.displayName}${ide.isCursor ? ' (Cursor AI analysis available)' : ''}`);
+
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(
         'pythonPackageVisualizer.sidebar',
@@ -57,7 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // CodeLens + Hover for Python imports
     const importScanner = new ImportScanner(logger);
     const codeLensProvider = new ImportCodeLensProvider(logger, checker, importScanner, scanner);
-    const hoverProvider = new ImportHoverProvider(checker, importScanner);
+    const hoverProvider = new ImportHoverProvider(checker, importScanner, scanner);
 
     context.subscriptions.push(
       vscode.languages.registerCodeLensProvider(

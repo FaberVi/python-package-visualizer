@@ -1,13 +1,13 @@
 {
   "name": "python-package-visualizer",
   "displayName": "Python Package Visualizer",
-  "description": "A VS Code extension to visualize, manage and audit Python workspace dependencies — with version checks, CVE badges, unused package detection, dependency graph, and one-click updates.",
-  "version": "3.1.0",
+  "description": "A VS Code extension to visualize, manage and audit Python workspace dependencies - with version checks, CVE badges, unused package detection, dependency graph, and one-click updates.",
+  "version": "3.1.1",
   "icon": "media/icon.png",
   "publisher": "Elanchezhiyan-P",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.105.0"
   },
   "categories": [
     "Other",
@@ -221,6 +221,16 @@
             "Italiano"
           ],
           "description": "UI language for the Package Visualizer webview and sidebar."
+        },
+        "pythonPackageVisualizer.cursorAiAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "When running in Cursor, enable AI-assisted review of unused packages via Agent chat."
+        },
+        "pythonPackageVisualizer.cursorAiUseAutoModel": {
+          "type": "boolean",
+          "default": true,
+          "description": "When opening Cursor Agent for unused-package analysis, use the Auto model (Cursor model id: default)."
         }
       }
     }
@@ -240,7 +250,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.9.1",
-    "@types/vscode": "^1.107.0",
+    "@types/vscode": "^1.105.0",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
     "@vscode/test-electron": "^2.5.2",

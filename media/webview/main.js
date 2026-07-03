@@ -15,6 +15,14 @@
 window.renderAll = function () {
   const filtered = window.getFiltered();
 
+  if (!(window.allPackages || []).length) {
+    window.showEmpty?.(window.depFilesEmpty);
+    return;
+  }
+
+  const elEmpty = document.getElementById('empty-state');
+  if (elEmpty) elEmpty.style.display = 'none';
+
   if (typeof window.updateStats === 'function') {
     window.updateStats(window.allPackages);
   }
@@ -45,11 +53,12 @@ window.addEventListener('message', event => {
     case 'update':
       window.hideLoading?.();
       window.allPackages = msg.packages || [];
+      window.depFilesEmpty = msg.depFilesEmpty || null;
       if (msg.scanStats) {
         window.scanStats = msg.scanStats;
       }
-      // Set active settings language synced from vscode configuration host
-      if (msg.language && window.i18n[msg.language] && msg.language !== window.currentLang) {
+      // Always sync language from the extension host configuration.
+      if (msg.language && window.i18n[msg.language]) {
         window.currentLang = msg.language;
         try { localStorage.setItem('ppv-lang', window.currentLang); } catch (_) {}
         const langSel = document.getElementById('lang-select');
@@ -116,6 +125,19 @@ window.addEventListener('message', event => {
         window.renderVenvHealth?.();
       }
       break;
+
+    case 'ideCapabilities':
+      window.cursorAiAvailable = Boolean(msg.enabled && msg.canOpenChat);
+      window.cursorIdeName = msg.ideName || '';
+      window.cursorAiUseAutoModel = msg.useAutoModel !== false;
+      if (window.activeTab === 'unused') {
+        window.renderUnused?.();
+      }
+      break;
+
+    case 'unusedAiResult':
+      window.renderUnusedAiResult?.(msg);
+      break;
   }
 });
 
@@ -149,6 +171,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const elAddPkgInput = document.getElementById('add-pkg-input');
   const elAddPkgSearch = document.getElementById('add-pkg-search');
   const elAddPkgInstall = document.getElementById('add-pkg-install');
+  const elEmptySelectManual = document.getElementById('empty-select-manual');
+  const elEmptyRefresh = document.getElementById('empty-refresh');
+
+  elEmptySelectManual?.addEventListener('click', () => {
+    window.vscode.postMessage({ type: 'selectManualRequirements' });
+  });
+  elEmptyRefresh?.addEventListener('click', () => {
+    elRefresh?.click();
+  });
 
   // Welcome Tour step binders
   document.getElementById('tour-next')?.addEventListener('click', () => {
@@ -328,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
   elBulkUpdate?.addEventListener('click', () => {
     const names = [...window.selectedPackages].filter(name => {
       const pkg = window.allPackages.find(p => p.name === name);
-      return pkg && pkg.status === 'update-available';
+      return pkg && pkg.status === 'update-available' && !pkg.updateBlockedByConflict;
     });
     if (names.length) {
       window.vscode.postMessage({ type: 'bulkUpdate', names });

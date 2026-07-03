@@ -52,6 +52,7 @@ window.renderTable = function (filtered) {
   const listRows = filtered.map(pkg => {
     const isChecked = window.selectedPackages.has(pkg.name) ? 'checked' : '';
     const canUpdate = pkg.status === 'update-available';
+    const isConflictBlocked = pkg.status === 'conflict-blocked' || pkg.updateBlockedByConflict;
     const isMajor = isMajorJump(pkg.installedVersion, pkg.latestVersion);
     const isLocked = window.safeMode && isMajor;
 
@@ -76,6 +77,16 @@ window.renderTable = function (filtered) {
       } else {
         actionBtnHtml += `<button class="action-btn update-btn" data-name="${esc(pkg.name)}">${window.t('btn.update')}</button>`;
       }
+    } else if (isConflictBlocked) {
+      if (pkg.previousVersion) {
+        actionBtnHtml += `<button class="action-btn rollback-btn" data-name="${esc(pkg.name)}" data-version="${esc(pkg.previousVersion)}" title="${window.t('btn.revertPreviousTitle')}">${window.t('btn.revertPrevious')}</button> `;
+      }
+      if (pkg.latestVersion && pkg.latestVersion !== 'unknown') {
+        actionBtnHtml += `<button class="action-btn force-update-btn" data-name="${esc(pkg.name)}" title="${window.t('btn.forceUpdateTitle')}">${window.t('btn.forceUpdate')}</button>`;
+      }
+      if (!actionBtnHtml) {
+        actionBtnHtml += `<span style="font-size:11px;opacity:0.5;">\u2014</span>`;
+      }
     } else if (pkg.status === 'not-installed') {
       actionBtnHtml += `<button class="action-btn install-btn" data-name="${esc(pkg.name)}">${window.t('btn.install')}</button>`;
     } else {
@@ -93,7 +104,8 @@ window.renderTable = function (filtered) {
       tagsHtml += ` <span class="inline-tag conflict" title="Has dependency conflicts">${window.t('tag.conflict')}</span>`;
     }
     if (!pkg.isUsed && pkg.status !== 'not-installed') {
-      tagsHtml += ` <span class="inline-tag unused" title="Not imported in python files">${window.t('tag.unused')}</span>`;
+      const conf = pkg.unusedConfidence ?? 100;
+      tagsHtml += ` <span class="inline-tag unused" title="${window.t('tag.unusedTitle').replace('{n}', conf)}">${window.t('tag.unused')}</span>`;
     }
 
     if (hasDrift) {
@@ -121,7 +133,7 @@ window.renderTable = function (filtered) {
     const relDate = pkg.releaseDate ? window.formatReleaseDate(pkg.releaseDate) : '\u2014';
 
     return `
-      <tr class="pkg-row" data-name="${esc(pkg.name)}">
+      <tr class="pkg-row ${isConflictBlocked ? 'row-conflict' : ''}" data-name="${esc(pkg.name)}">
         <td class="col-check" style="text-align:center"><input type="checkbox" class="pkg-check" data-name="${esc(pkg.name)}" ${isChecked}></td>
         <td class="col-name">
           <div style="font-weight:600;display:flex;align-items:center;gap:6px;" class="pkg-detail-trigger" data-name="${esc(pkg.name)}">
@@ -170,6 +182,34 @@ window.renderTable = function (filtered) {
       if (pkg && typeof window.showDetail === 'function') {
         window.showDetail(pkg);
       }
+    });
+  });
+
+  // Action rollback binding
+  tbody.querySelectorAll('.rollback-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const version = btn.dataset.version;
+      if (name && version) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.reverting')}`;
+        window.vscode.postMessage({ type: 'rollbackPackage', name, version });
+      }
+    });
+  });
+
+  // Force update despite dependency conflicts
+  tbody.querySelectorAll('.force-update-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (!name) return;
+      window.showForceUpdateConfirmDialog?.(name, () => {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.updating')}`;
+        window.vscode.postMessage({ type: 'forceUpdatePackage', name });
+      });
     });
   });
 
@@ -305,6 +345,60 @@ window.showSyncConfirmDialog = function (onSync) {
 };
 
 /**
+ * Confirms a forced update when dependency conflicts block the normal upgrade path.
+ */
+window.showForceUpdateConfirmDialog = function (packageName, onConfirm) {
+  document.getElementById('force-update-confirm-dialog')?.remove();
+
+  const t = window.t || (k => k);
+  const dialog = document.createElement('div');
+  dialog.id = 'force-update-confirm-dialog';
+  dialog.style.cssText = `
+    position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.55);backdrop-filter:blur(4px);opacity:0;transition:opacity .15s ease;
+  `;
+  dialog.innerHTML = `
+    <div style="
+      background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));
+      border:1px solid var(--vscode-panel-border);border-radius:12px;padding:28px 32px;
+      max-width:440px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.4);
+    ">
+      <div style="font-size:16px;font-weight:700;color:var(--vscode-foreground);margin-bottom:8px;">
+        ${t('forceUpdate.confirmTitle')}
+      </div>
+      <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:20px;line-height:1.5;">
+        ${t('forceUpdate.confirmMessage').replace('{name}', window.esc(packageName))}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="force-update-confirm" style="
+          flex:1;min-width:120px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);
+          border:none;padding:9px 14px;border-radius:6px;font-size:12px;font-weight:600;
+          cursor:pointer;font-family:inherit;
+        ">${t('btn.forceUpdate')}</button>
+        <button id="force-update-cancel" style="
+          flex:1;min-width:80px;background:transparent;color:var(--vscode-descriptionForeground);
+          border:1px solid var(--vscode-panel-border);padding:9px 14px;border-radius:6px;
+          font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;
+        ">${t('sync.cancel')}</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dialog);
+  requestAnimationFrame(() => { dialog.style.opacity = '1'; });
+
+  const close = () => dialog.remove();
+  document.getElementById('force-update-confirm')?.addEventListener('click', () => {
+    close();
+    onConfirm();
+  });
+  document.getElementById('force-update-cancel')?.addEventListener('click', close);
+  dialog.addEventListener('click', e => {
+    if (e.target === dialog) close();
+  });
+};
+
+/**
  * Drives showing, counts, and deselect checks on selected table checkbox actions.
  */
 window.updateBulkBar = function () {
@@ -327,7 +421,7 @@ window.updateBulkBar = function () {
       .map(name => window.allPackages.find(p => p.name === name))
       .filter(Boolean);
 
-    const updatesCount = selectedList.filter(p => p.status === 'update-available').length;
+    const updatesCount = selectedList.filter(p => p.status === 'update-available' && !p.updateBlockedByConflict).length;
     const syncsCount = selectedList.filter(p => {
       if (p.specifiedVersion && p.installedVersion) {
         const pinned = window.extractPinnedVersion(p.specifiedVersion);

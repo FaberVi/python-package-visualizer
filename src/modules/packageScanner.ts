@@ -9,6 +9,7 @@ import { parsePyprojectToml } from './parsers/pyprojectParser.js';
 import { parseSetupPy } from './parsers/setupPyParser.js';
 import { parseSetupCfg } from './parsers/setupCfgParser.js';
 import { parsePipfile } from './parsers/pipfileParser.js';
+import { discoverDepFiles } from './depFileDiscovery.js';
 
 export type DepFileType = 'requirements.txt' | 'pyproject.toml' | 'setup.py' | 'setup.cfg' | 'Pipfile' | (string & {});
 
@@ -84,7 +85,7 @@ export class PackageScanner {
     // Parse in priority order: setup.py first (lowest), then pyproject.toml, then requirements.txt (highest)
     // When a package appears in multiple files, keep the source from the most sync-friendly format.
     for (const file of depFiles) {
-      const parsed = this.parseDepFile(file);
+      const parsed = this.parseDepFile(file, workspaceRoot);
       for (const pkg of parsed) {
         // WHY: parsers store source as basename (e.g. 'requirements.txt'), but in monorepo
         // structures the file may live in a subdirectory (e.g. 'backend/requirements.txt').
@@ -149,42 +150,26 @@ export class PackageScanner {
   }
 
   private findDepFiles(root: string): string[] {
-    const candidates = [
-      path.join(root, 'setup.py'),
-      path.join(root, 'setup.cfg'),
-      path.join(root, 'Pipfile'),
-      path.join(root, 'pyproject.toml'),
-      path.join(root, 'requirements.txt'),
-      path.join(root, 'requirements-dev.txt'),
-      path.join(root, 'requirements-dev.in'),
-      path.join(root, 'dev-requirements.txt'),
-      path.join(root, 'requirements-test.txt'),
-      path.join(root, 'test-requirements.txt'),
-      path.join(root, 'requirements-docs.txt'),
-      path.join(root, 'docs-requirements.txt'),
-      path.join(root, 'requirements-lint.txt'),
-      path.join(root, 'lint-requirements.txt'),
-    ];
-    const files = candidates.filter(f => fs.existsSync(f));
+    const manualPath = this.context?.workspaceState.get<string>(
+      'pythonPackageVisualizer.manualRequirementsPath'
+    );
 
-    // Retrieve the manual requirements file path selected by the user to support mono-repo structures
-    if (this.context) {
-      const manualPath = this.context.workspaceState.get<string>('pythonPackageVisualizer.manualRequirementsPath');
-      if (manualPath && fs.existsSync(manualPath) && !files.includes(manualPath)) {
-        files.push(manualPath);
-      }
-    }
-
-    return files;
+    return discoverDepFiles(root, {
+      manualPath: manualPath && fs.existsSync(manualPath) ? manualPath : undefined,
+    });
   }
 
   private getGroupFromFileName(filename: string): 'main' | 'dev' | 'test' | 'docs' | 'lint' {
     return getGroupFromFileName(filename);
   }
 
-  public parseRequirementsTxt(filePath: string, group?: 'main' | 'dev' | 'test' | 'docs' | 'lint'): ScannedPackage[] {
+  public parseRequirementsTxt(
+    filePath: string,
+    group?: 'main' | 'dev' | 'test' | 'docs' | 'lint',
+    workspaceRoot?: string
+  ): ScannedPackage[] {
     const finalGroup = group || this.getGroupFromFileName(path.basename(filePath));
-    return parseRequirementsTxt(filePath, finalGroup);
+    return parseRequirementsTxt(filePath, finalGroup, new Set(), workspaceRoot);
   }
 
   public parsePyprojectToml(filePath: string): ScannedPackage[] {
@@ -203,11 +188,11 @@ export class PackageScanner {
     return parsePipfile(filePath, this.logger);
   }
 
-  private parseDepFile(filePath: string): ScannedPackage[] {
+  private parseDepFile(filePath: string, workspaceRoot: string): ScannedPackage[] {
     const basename = path.basename(filePath);
     try {
       if (basename.endsWith('.txt') || basename.endsWith('.in')) {
-        return this.parseRequirementsTxt(filePath);
+        return this.parseRequirementsTxt(filePath, undefined, workspaceRoot);
       }
       if (basename === 'pyproject.toml') {
         return this.parsePyprojectToml(filePath);
@@ -397,18 +382,69 @@ export class PackageScanner {
   resolveForWorkspace(root: string): string | null {
     const isWindows = process.platform === 'win32';
     const venvDirs = ['.venv', 'venv', 'env', '.env'];
+    const searchRoots = [
+      root,
+      path.join(root, 'backend'),
+      path.join(root, 'api'),
+      path.join(root, 'server'),
+      path.join(root, 'python'),
+    ];
 
-    for (const venvDir of venvDirs) {
-      const pythonPath = isWindows
-        ? path.join(root, venvDir, 'Scripts', 'python.exe')
-        : path.join(root, venvDir, 'bin', 'python');
+    for (const searchRoot of searchRoots) {
+      if (!fs.existsSync(searchRoot)) {
+        continue;
+      }
+      for (const venvDir of venvDirs) {
+        const pythonPath = isWindows
+          ? path.join(searchRoot, venvDir, 'Scripts', 'python.exe')
+          : path.join(searchRoot, venvDir, 'bin', 'python');
 
-      if (fs.existsSync(pythonPath)) {
-        return pythonPath;
+        if (fs.existsSync(pythonPath)) {
+          return pythonPath;
+        }
       }
     }
 
     return null;
+  }
+
+  /**
+   * Returns true when the given Python executable lives inside a workspace venv folder.
+   */
+  isPythonInWorkspaceVenv(pythonPath: string, root: string): boolean {
+    const normalized = this.normalizePath(pythonPath);
+    const venvDirs = ['.venv', 'venv', 'env', '.env'];
+    const searchRoots = [
+      root,
+      path.join(root, 'backend'),
+      path.join(root, 'api'),
+      path.join(root, 'server'),
+      path.join(root, 'python'),
+    ];
+
+    for (const searchRoot of searchRoots) {
+      for (const venvDir of venvDirs) {
+        const venvRoot = this.normalizePath(path.join(searchRoot, venvDir));
+        const prefix = `${venvRoot}${path.sep}`;
+        if (normalized === venvRoot || normalized.startsWith(prefix)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * True when pip/uv operations would target a non-project interpreter (system or external).
+   */
+  willUseGlobalPython(root: string): boolean {
+    return !this.isPythonInWorkspaceVenv(this.resolvePythonPath(), root);
+  }
+
+  private normalizePath(filePath: string): string {
+    const resolved = path.resolve(filePath);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
   }
 
   /**

@@ -244,13 +244,35 @@
     }
     strong { font-weight: 600; color: var(--vscode-foreground); }
 
-    /* ── Author ────────────────────────── */
-    .author {
-      margin: 14px 16px 0;
-      padding: 12px;
+    /* ── Credits / Authors ───────────── */
+    .credits {
+      margin: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .credit-card {
+      padding: 10px 12px;
       border-radius: 6px;
       border: 1px solid var(--vscode-panel-border);
       background: var(--vscode-editor-background);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .credit-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground);
+      opacity: .85;
+    }
+    .author {
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -389,17 +411,101 @@
       background: white;
     }
     .setting-select {
-      background: var(--vscode-input-background);
-      color: var(--vscode-input-foreground);
-      border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+      background-color: var(--vscode-dropdown-background, var(--vscode-input-background));
+      color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+      border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-panel-border)));
       border-radius: 4px;
       padding: 4px 8px;
       font-size: 11px;
       font-family: inherit;
       cursor: pointer;
       flex-shrink: 0;
+      color-scheme: light dark;
+    }
+    .setting-select option {
+      background-color: var(--vscode-dropdown-background, var(--vscode-input-background));
+      color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
     }
     .select-row { cursor: default; }
+
+    /* Custom select — native <select> dropdowns ignore theme colors in webviews */
+    .custom-select {
+      position: relative;
+      flex-shrink: 0;
+    }
+    .custom-select-trigger {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 108px;
+      padding: 4px 8px;
+      background: var(--vscode-dropdown-background, var(--vscode-input-background));
+      color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+      border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-panel-border)));
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color .12s, background .12s;
+    }
+    .custom-select-trigger:hover {
+      background: var(--vscode-list-hoverBackground, var(--vscode-dropdown-background));
+    }
+    .custom-select.open .custom-select-trigger,
+    .custom-select-trigger:focus-visible {
+      outline: none;
+      border-color: var(--vscode-focusBorder);
+      box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+    }
+    .custom-select-label {
+      flex: 1;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .custom-select-chevron {
+      font-size: 9px;
+      opacity: .7;
+      transition: transform .15s ease;
+    }
+    .custom-select.open .custom-select-chevron {
+      transform: rotate(180deg);
+    }
+    .custom-select-menu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      min-width: 100%;
+      margin: 0;
+      padding: 4px 0;
+      list-style: none;
+      background: var(--vscode-menu-background, var(--vscode-dropdown-background, var(--vscode-editorWidget-background)));
+      color: var(--vscode-menu-foreground, var(--vscode-dropdown-foreground, var(--vscode-foreground)));
+      border: 1px solid var(--vscode-menu-border, var(--vscode-dropdown-border, var(--vscode-panel-border)));
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+      z-index: 100;
+    }
+    .custom-select.open .custom-select-menu {
+      display: block;
+    }
+    .custom-select-option {
+      padding: 6px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+      color: var(--vscode-menu-foreground, var(--vscode-foreground));
+      transition: background .1s;
+    }
+    .custom-select-option:hover,
+    .custom-select-option:focus {
+      background: var(--vscode-list-hoverBackground, var(--vscode-menu-selectionBackground));
+      outline: none;
+    }
+    .custom-select-option.selected {
+      background: var(--vscode-list-activeSelectionBackground, var(--vscode-menu-selectionBackground));
+      color: var(--vscode-list-activeSelectionForeground, var(--vscode-menu-selectionForeground, var(--vscode-foreground)));
+    }
 
     /* ── Drift Stat Box ────────────────── */
     #drift-stat-box {
@@ -593,12 +699,18 @@
         <div class="setting-name">{{LOC_UPDATE_CHECK_SCHEDULE}}</div>
         <div class="setting-desc">{{LOC_UPDATE_CHECK_SCHEDULE_DESC}}</div>
       </div>
-      <select class="setting-select" data-setting="updateCheckSchedule">
-        <option value="off">{{LOC_SCHEDULE_OFF}}</option>
-        <option value="daily">{{LOC_SCHEDULE_DAILY}}</option>
-        <option value="weekly">{{LOC_SCHEDULE_WEEKLY}}</option>
-        <option value="monthly">{{LOC_SCHEDULE_MONTHLY}}</option>
-      </select>
+      <div class="custom-select" data-setting="updateCheckSchedule">
+        <button type="button" class="custom-select-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="custom-select-label">{{LOC_SCHEDULE_OFF}}</span>
+          <span class="custom-select-chevron">▾</span>
+        </button>
+        <ul class="custom-select-menu" role="listbox">
+          <li class="custom-select-option" role="option" data-value="off">{{LOC_SCHEDULE_OFF}}</li>
+          <li class="custom-select-option" role="option" data-value="daily">{{LOC_SCHEDULE_DAILY}}</li>
+          <li class="custom-select-option" role="option" data-value="weekly">{{LOC_SCHEDULE_WEEKLY}}</li>
+          <li class="custom-select-option" role="option" data-value="monthly">{{LOC_SCHEDULE_MONTHLY}}</li>
+        </ul>
+      </div>
     </div>
   </div>
 
@@ -654,10 +766,16 @@
         <div class="setting-name">{{LOC_LANGUAGE}}</div>
         <div class="setting-desc">{{LOC_LANGUAGE_DESC}}</div>
       </div>
-      <select id="sidebar-lang-select" class="setting-select" data-setting="language">
-        <option value="en">English</option>
-        <option value="it">Italiano</option>
-      </select>
+      <div id="sidebar-lang-select" class="custom-select" data-setting="language">
+        <button type="button" class="custom-select-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="custom-select-label">English</span>
+          <span class="custom-select-chevron">▾</span>
+        </button>
+        <ul class="custom-select-menu" role="listbox">
+          <li class="custom-select-option" role="option" data-value="en">English</li>
+          <li class="custom-select-option" role="option" data-value="it">Italiano</li>
+        </ul>
+      </div>
     </div>
   </div>
 
@@ -693,28 +811,57 @@
     </div>
   </div>
 
-  <!-- Author -->
-  <div class="author">
-    <div class="author-top">
-      <div class="author-avatar">👨‍💻</div>
-      <div>
-        <div class="author-info-name">Elanchezhiyan P</div>
-        <div class="author-info-role">{{LOC_AUTHOR_ROLE}}</div>
-        <div class="author-tagline">{{LOC_AUTHOR_TAGLINE}}</div>
+  <!-- Credits -->
+  <div class="section">
+    <div class="section-title">{{LOC_CREDITS}}</div>
+    <div class="credits">
+      <div class="credit-card">
+        <div class="credit-badge">{{LOC_ORIGINAL_AUTHOR}}</div>
+        <div class="author">
+          <div class="author-top">
+            <div class="author-avatar">👨‍💻</div>
+            <div>
+              <div class="author-info-name">Elanchezhiyan P</div>
+              <div class="author-info-role">{{LOC_AUTHOR_ROLE}}</div>
+              <div class="author-tagline">{{LOC_AUTHOR_TAGLINE}}</div>
+            </div>
+          </div>
+          <div class="author-skills">{{LOC_AUTHOR_SKILLS}}</div>
+          <div class="author-cred">{{LOC_AUTHOR_CRED}}</div>
+          <div class="author-links">
+            <a class="author-link" id="link-portfolio">
+              <span class="author-link-icon">🌐</span> codebyelan.in
+            </a>
+            <a class="author-link" id="link-github-author">
+              <span class="author-link-icon">🐙</span> github.com/Elanchezhiyan-P
+            </a>
+            <a class="author-link" id="link-linkedin">
+              <span class="author-link-icon">🔗</span> LinkedIn
+            </a>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="author-skills">{{LOC_AUTHOR_SKILLS}}</div>
-    <div class="author-cred">{{LOC_AUTHOR_CRED}}</div>
-    <div class="author-links">
-      <a class="author-link" id="link-portfolio">
-        <span class="author-link-icon">🌐</span> codebyelan.in
-      </a>
-      <a class="author-link" id="link-github-author">
-        <span class="author-link-icon">🐙</span> github.com/Elanchezhiyan-P
-      </a>
-      <a class="author-link" id="link-linkedin">
-        <span class="author-link-icon">🔗</span> LinkedIn
-      </a>
+
+      <div class="credit-card">
+        <div class="credit-badge">{{LOC_MAINTAINER}}</div>
+        <div class="author">
+          <div class="author-top">
+            <div class="author-avatar">🛠️</div>
+            <div>
+              <div class="author-info-name">Vincenzo Fabiano</div>
+              <div class="author-info-role">{{LOC_MAINTAINER_DESC}}</div>
+            </div>
+          </div>
+          <div class="author-links">
+            <a class="author-link" id="link-github-maintainer">
+              <span class="author-link-icon">🐙</span> github.com/D3m0n92
+            </a>
+            <a class="author-link" id="link-fork-repo">
+              <span class="author-link-icon">📦</span> {{LOC_MAINTAINER_FORK_LINK}}
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

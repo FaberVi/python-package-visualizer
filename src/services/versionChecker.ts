@@ -4,6 +4,7 @@ import { Logger } from '../utils/logger.js';
 export type VersionStatus =
   | 'up-to-date'
   | 'update-available'
+  | 'conflict-blocked'
   | 'not-installed'
   | 'drift'
   | 'unknown';

@@ -67,6 +67,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (msg.type === 'updateSetting' && msg.key) {
         const config = vscode.workspace.getConfiguration('pythonPackageVisualizer');
         void config.update(msg.key, msg.value, vscode.ConfigurationTarget.Global);
+        if (msg.key === 'language' && this.view) {
+          this.view.webview.html = this.getWelcomeHtml(this.view.webview);
+        }
         return;
       }
 
@@ -82,7 +85,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   sendPackages(packages: PackageDisplayData[], _stats?: ScanStats, _type?: 'init' | 'update'): void {
     if (!this.view) { return; }
     const ok       = packages.filter(p => p.status === 'up-to-date').length;
-    const updates  = packages.filter(p => p.status === 'update-available').length;
+    const updates  = packages.filter(p => p.status === 'update-available' && !p.updateBlockedByConflict).length;
     const vulnerable = packages.filter(p => p.vulnerabilities && p.vulnerabilities.length > 0).length;
     const drifted = packages.filter(p => p.status === 'drift').length;
     void this.view.webview.postMessage({ type: 'sidebarStats', ok, updates, vulnerable, drifted });
@@ -211,6 +214,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     author_tagline: "Full Stack Developer | .NET | AI | Cloud",
     author_skills: "Specialized in .NET, React, AI, Integrations & DevOps",
     author_cred: "🧩 Open Source Contributor · 📦 NuGet Publisher · ✍️ Technical Blogger",
+    credits: "Credits",
+    original_author: "Original author",
+    maintainer: "Fork maintainer",
+    maintainer_desc: "Active development & Cursor integration",
+    maintainer_fork_link: "python-package-visualizer (fork)",
     footer_license: "MIT License"
   },
   it: {
@@ -284,6 +292,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     author_tagline: "Sviluppatore Full Stack | .NET | AI | Cloud",
     author_skills: "Specializzato in .NET, React, AI, Integrazioni e DevOps",
     author_cred: "🧩 Contributore Open Source · 📦 Editore NuGet · ✍️ Blogger Tecnico",
+    credits: "Crediti",
+    original_author: "Autore originale",
+    maintainer: "Maintainer del fork",
+    maintainer_desc: "Sviluppo attivo e integrazione Cursor",
+    maintainer_fork_link: "python-package-visualizer (fork)",
     footer_license: "Licenza MIT"
   }
 };

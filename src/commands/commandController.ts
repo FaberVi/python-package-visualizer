@@ -22,6 +22,7 @@ import { RequirementsHandler } from './handlers/requirementsHandler.js';
 import { MigrationHandler } from './handlers/migrationHandler.js';
 import { VisualizerHandler } from './handlers/visualizerHandler.js';
 import { UtilityHandler } from './handlers/utilityHandler.js';
+import { UnusedAiHandler } from './handlers/unusedAiHandler.js';
 
 import type { ScannedPackage } from '../modules/packageScanner.js';
 import type { VersionCheckResult } from '../services/versionChecker.js';
@@ -46,6 +47,7 @@ export class CommandController {
   private readonly migrationHandler: MigrationHandler;
   private readonly visualizerHandler: VisualizerHandler;
   private readonly utilityHandler: UtilityHandler;
+  private readonly unusedAiHandler: UnusedAiHandler;
 
   /**
    * Getter to dynamically retrieve scanned packages from visualizer state cache.
@@ -148,6 +150,8 @@ export class CommandController {
       () => this.lastPackages,
       sidebar
     );
+
+    this.unusedAiHandler = new UnusedAiHandler(panel, logger, getRoot);
   }
 
   /**
@@ -159,11 +163,17 @@ export class CommandController {
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
         'extension.showPackageVisualizer',
-        () => this.visualizerHandler.showVisualizer()
+        async () => {
+          await this.visualizerHandler.showVisualizer();
+          void this.unusedAiHandler.sendCapabilities();
+        }
       ),
       vscode.commands.registerCommand(
         'extension.openPackageVisualizer',
-        () => this.visualizerHandler.showVisualizer()
+        async () => {
+          await this.visualizerHandler.showVisualizer();
+          void this.unusedAiHandler.sendCapabilities();
+        }
       ),
       vscode.commands.registerCommand(
         'extension.checkPackageUpdates',
@@ -184,13 +194,31 @@ export class CommandController {
       vscode.commands.registerCommand(
         'extension.clearManualRequirements',
         () => this.clearManualRequirements()
+      ),
+      vscode.commands.registerCommand(
+        'extension.analyzeUnusedWithCursor',
+        () => {
+          const state = this.visualizerHandler.getUnusedAiScanState();
+          if (state) {
+            this.unusedAiHandler.setScanState(state);
+          }
+          void this.unusedAiHandler.analyzeUnusedWithCursor();
+        }
       )
     );
 
     // Route messages from webview panel to correct handlers
     this.panel.onMessage(async msg => {
+      if (msg.type === 'ready') {
+        void this.unusedAiHandler.sendCapabilities();
+        return;
+      }
+
       switch (msg.type) {
         case 'updatePackage':
+          void this.updatePackage(msg.name);
+          break;
+        case 'forceUpdatePackage':
           void this.updatePackage(msg.name);
           break;
         case 'rollbackPackage':
@@ -291,6 +319,15 @@ export class CommandController {
         case 'updatePip':
           void this.handleUpdatePip();
           break;
+        case 'cursorAnalyzeUnused': {
+          const m = msg as { type: string; packageNames?: string[] };
+          const state = this.visualizerHandler.getUnusedAiScanState();
+          if (state) {
+            this.unusedAiHandler.setScanState(state);
+          }
+          void this.unusedAiHandler.analyzeUnusedWithCursor(m.packageNames);
+          break;
+        }
       }
     });
 

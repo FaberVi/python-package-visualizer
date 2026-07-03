@@ -20,6 +20,7 @@ export interface HistoryDisplayEntry {
 export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'updatePackage'; name: string }
+  | { type: 'forceUpdatePackage'; name: string }
   | { type: 'updateAllPackages'; names: string[] }
   | { type: 'rollbackPackage'; name: string; version: string }
   | { type: 'refresh' }
@@ -45,7 +46,8 @@ export type WebviewMessage =
   | { type: 'generateSetupScript'; format: 'bash' | 'powershell' | 'markdown' }
   | { type: 'syncRequirementsToInstalled'; name: string; source: string }
   | { type: 'requestVenvHealth' }
-  | { type: 'updatePip' };
+  | { type: 'updatePip' }
+  | { type: 'cursorAnalyzeUnused'; packageNames?: string[] };
 
 /** Aggregated workspace scan statistics sent alongside package data. */
 export interface ScanStats {
@@ -58,6 +60,12 @@ export interface ScanStats {
   maintainerActivityScore?: number;
   slowestPackages?: Array<{name: string; time: number}>;
   manualRequirementsPath?: string;
+}
+
+/** Shown in the webview when no dependency files are auto-detected. */
+export interface DepFilesEmptyState {
+  reason: 'not-found' | 'parse-failed';
+  failedPath?: string;
 }
 
 /** Unified display payload for a single package, combining scan + PyPI data. */
@@ -82,6 +90,10 @@ export interface PackageDisplayData {
   installSize?: number;
   environment?: string;
   hasConflict?: boolean;
+  /** Previous installed version from local history, when available. */
+  previousVersion?: string | null;
+  /** True when an update exists on PyPI but is blocked due to dependency conflicts. */
+  updateBlockedByConflict?: boolean;
   pythonCompatible?: boolean;
   pythonWarning?: string;
   installTime?: number;
@@ -90,4 +102,6 @@ export interface PackageDisplayData {
   unusedConfidence?: number;
   /** Machine-readable reason codes explaining confidence deductions */
   unusedReasons?: string[];
+  /** Set when config/script reference search found usage outside imports */
+  referenceUsageFound?: boolean;
 }

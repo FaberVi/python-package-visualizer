@@ -68,6 +68,22 @@ window.renderConflicts = function () {
     const isMissing = c.conflictingVersion === 'not installed';
     const typeColor = isMissing ? '#a78bfa' : '#fb923c';
     const typeLabel = isMissing ? window.t('conflicts.missingDep') : window.t('conflicts.versionMismatch');
+    const pkgInfo = allPackages.find(
+      p => p.name.toLowerCase().replace(/[-_.]+/g, '-') === c.package.toLowerCase().replace(/[-_.]+/g, '-')
+    );
+    let actionsHtml = '';
+    if (pkgInfo?.updateBlockedByConflict) {
+      const parts = [];
+      if (pkgInfo.previousVersion) {
+        parts.push(`<button class="action-btn rollback-btn" data-name="${window.esc(pkgInfo.name)}" data-version="${window.esc(pkgInfo.previousVersion)}">${window.t('btn.revertPrevious')}</button>`);
+      }
+      if (pkgInfo.latestVersion && pkgInfo.latestVersion !== 'unknown') {
+        parts.push(`<button class="action-btn force-update-btn" data-name="${window.esc(pkgInfo.name)}">${window.t('btn.forceUpdate')}</button>`);
+      }
+      if (parts.length) {
+        actionsHtml = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${parts.join('')}</div>`;
+      }
+    }
 
     return `
     <div class="conflict-row" style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-left:3px solid ${typeColor};border-radius:8px;padding:14px 16px;margin-bottom:10px;">
@@ -85,6 +101,7 @@ window.renderConflicts = function () {
           : `, ${window.t('conflicts.butHave')} <span class="conflict-pkg-link" data-pkg="${window.esc(c.conflictingPackage)}" style="color:var(--vscode-textLink-foreground);cursor:pointer;font-weight:600;">${window.esc(c.conflictingPackage)}</span> <code style="background:var(--vscode-textCodeBlock-background);padding:2px 6px;border-radius:3px;font-size:11px;">${window.esc(c.conflictingVersion)}</code>`
         }
       </div>
+      ${actionsHtml}
     </div>`;
   }).join('');
 
@@ -102,6 +119,30 @@ window.renderConflicts = function () {
     link.addEventListener('click', () => {
       const pkg = allPackages.find(p => p.name.toLowerCase().replace(/[-_.]+/g, '-') === link.dataset.pkg);
       if (pkg && typeof window.showDetail === 'function') window.showDetail(pkg);
+    });
+  });
+
+  el.querySelectorAll('.rollback-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const version = btn.dataset.version;
+      if (name && version) {
+        btn.disabled = true;
+        window.vscode.postMessage({ type: 'rollbackPackage', name, version });
+      }
+    });
+  });
+
+  el.querySelectorAll('.force-update-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (!name) return;
+      window.showForceUpdateConfirmDialog?.(name, () => {
+        btn.disabled = true;
+        window.vscode.postMessage({ type: 'forceUpdatePackage', name });
+      });
     });
   });
 };

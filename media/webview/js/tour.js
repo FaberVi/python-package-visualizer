@@ -2,17 +2,13 @@
  * Welcome Interactive Tour for Python Package Visualizer.
  * Displays highlighting tooltips guiding new users through package stats,
  * PyPI installation, dependency graphs, and license risk dashboards.
- *
- * WHY: Modularizing the tour guides isolates temporary UI guide states,
- * avoiding pollution of critical data-loading routines.
  */
 
-// ── Tour Configuration Steps ────────────────────────────────────────────────
 window.TOUR_STEPS = [
-  { target: '#stats-bar',           title: 'Package Stats',      text: 'Click any card to instantly filter the list by status — updates, vulnerabilities, or conflicts.' },
-  { target: '#btn-add-pkg',         title: 'Add Package',        text: 'Search PyPI and install a new package into your environment in one click.' },
-  { target: '[data-tab="graph"]',   title: 'Dependency Graph',   text: 'Visualize your full dependency tree. Click any node to expand or view package details.' },
-  { target: '[data-tab="licenses"]',title: 'License Compliance', text: 'See all licenses grouped by risk level — flagging GPL/AGPL packages for commercial projects.' },
+  { target: '#stats-bar',           titleKey: 'tour.step1Title', textKey: 'tour.step1Text' },
+  { target: '#btn-add-pkg',         titleKey: 'tour.step2Title', textKey: 'tour.step2Text' },
+  { target: '[data-tab="graph"]',   titleKey: 'tour.step3Title', textKey: 'tour.step3Text' },
+  { target: '[data-tab="licenses"]', titleKey: 'tour.step4Title', textKey: 'tour.step4Text' },
 ];
 window.tourStep = 0;
 
@@ -33,6 +29,8 @@ window.showTourStep = function () {
   const tooltip  = document.getElementById('tour-tooltip');
   if (!backdrop || !tooltip) return;
 
+  const t = window.t || (key => key);
+
   if (window.tourStep >= window.TOUR_STEPS.length) {
     window.endTour();
     return;
@@ -45,24 +43,32 @@ window.showTourStep = function () {
   const tTitle = document.getElementById('tour-title');
   const tText = document.getElementById('tour-text');
   const tNext = document.getElementById('tour-next');
+  const tSkip = document.getElementById('tour-skip');
 
-  if (tLabel) tLabel.textContent = `Step ${window.tourStep + 1} of ${window.TOUR_STEPS.length}`;
-  if (tTitle) tTitle.textContent = step.title;
-  if (tText) tText.textContent = step.text;
-  if (tNext) tNext.textContent = window.tourStep === window.TOUR_STEPS.length - 1 ? '✓ Done' : 'Next →';
+  const stepLabel = t('tour.stepOf')
+    .replace('{current}', String(window.tourStep + 1))
+    .replace('{total}', String(window.TOUR_STEPS.length));
+
+  if (tLabel) tLabel.textContent = stepLabel;
+  if (tTitle) tTitle.textContent = t(step.titleKey);
+  if (tText) tText.textContent = t(step.textKey);
+  if (tNext) tNext.textContent = window.tourStep === window.TOUR_STEPS.length - 1 ? t('tour.finish') : t('tour.next');
+  if (tSkip) tSkip.textContent = t('tour.skip');
 
   backdrop.classList.add('active');
   tooltip.classList.add('active');
 
   if (target) {
     const rect = target.getBoundingClientRect();
-    const ttW = 260, ttH = 160;
+    const ttW = 260;
+    const ttH = 160;
     let top  = rect.bottom + 10;
     let left = rect.left;
     if (left + ttW > window.innerWidth - 10)  left = window.innerWidth - ttW - 10;
     if (top  + ttH > window.innerHeight - 10) top  = rect.top - ttH - 10;
     tooltip.style.top  = `${Math.max(8, top)}px`;
     tooltip.style.left = `${Math.max(8, left)}px`;
+    tooltip.style.transform = 'none';
   } else {
     tooltip.style.top  = '50%';
     tooltip.style.left = '50%';

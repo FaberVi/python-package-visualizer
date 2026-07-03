@@ -42,3 +42,14 @@
   font-size: 13px; font-family: inherit;
 }
 .empty-btn:hover { opacity: .85; }
+.empty-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-foreground);
+}
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
