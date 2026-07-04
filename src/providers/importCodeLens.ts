@@ -43,7 +43,7 @@ export class ImportCodeLensProvider implements vscode.CodeLensProvider {
     const ws = vscode.workspace.workspaceFolders?.[0];
     if (ws) {
       try {
-        const scanned = await this.packageScanner.scanWorkspace(ws.uri.fsPath);
+        const scanned = (await this.packageScanner.scanWorkspace(ws.uri.fsPath)).packages;
         installedMap = new Map(scanned.map(p => [p.name.toLowerCase(), p.installedVersion || '']));
         const conflicts = await this.packageScanner.checkConflicts(ws.uri.fsPath);
         for (const conflict of conflicts) {

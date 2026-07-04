@@ -87,5 +87,6 @@
 .node.unknown          circle { fill: var(--c-unknown); stroke: var(--c-unknown); }
 .node.vulnerable       circle { fill: var(--c-vuln);    stroke: var(--c-vuln); }
 .node.not-installed    circle { fill: none; stroke: var(--c-missing); stroke-dasharray: 4 2; }
+.node.conflict-blocked circle { fill: var(--c-conflict, #f97316); stroke: var(--c-conflict, #f97316); stroke-dasharray: 3 2; }
 .node.root             circle { fill: var(--vscode-button-background); stroke: var(--vscode-button-hoverBackground, var(--vscode-button-background)); r: 12px; }
 .node.collapsed        circle { stroke-dasharray: 3 2; opacity: .75; }

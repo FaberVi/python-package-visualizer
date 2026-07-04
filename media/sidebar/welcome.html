@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
+  <title>Python Package Visualizer</title>
+  <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}';" />
+    content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}';">
   <style nonce="{{NONCE}}">
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -575,7 +576,7 @@
 
   <!-- CTA -->
   <div class="cta">
-    <button class="open-btn" id="btn-open">
+    <button type="button" class="open-btn" id="btn-open">
       <span>▶</span> {{LOC_BTN_OPEN}}
     </button>
   </div>
@@ -658,7 +659,7 @@
 
   <div class="section-label">{{LOC_SETTINGS}}</div>
   <div class="settings-list">
-    <label class="setting-row">
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_IMPORT_ANNOTATIONS}}</div>
         <div class="setting-desc">{{LOC_IMPORT_ANNOTATIONS_DESC}}</div>
@@ -666,8 +667,8 @@
       <div class="toggle-switch" data-setting="showImportCodeLens">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
-    <label class="setting-row">
+    </div>
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_SHOW_HOVER_INFO}}</div>
         <div class="setting-desc">{{LOC_SHOW_HOVER_INFO_DESC}}</div>
@@ -675,8 +676,8 @@
       <div class="toggle-switch" data-setting="showImportHover">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
-    <label class="setting-row">
+    </div>
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_AUTO_CHECK_ON_OPEN}}</div>
         <div class="setting-desc">{{LOC_AUTO_CHECK_ON_OPEN_DESC}}</div>
@@ -684,8 +685,8 @@
       <div class="toggle-switch" data-setting="autoCheckOnOpen">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
-    <label class="setting-row">
+    </div>
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_NOTIFY_ON_OUTDATED}}</div>
         <div class="setting-desc">{{LOC_NOTIFY_ON_OUTDATED_DESC}}</div>
@@ -693,7 +694,7 @@
       <div class="toggle-switch" data-setting="notifyOnOutdated">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
+    </div>
     <div class="setting-row select-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_UPDATE_CHECK_SCHEDULE}}</div>
@@ -704,6 +705,7 @@
           <span class="custom-select-label">{{LOC_SCHEDULE_OFF}}</span>
           <span class="custom-select-chevron">▾</span>
         </button>
+        <!-- html-validate-disable-next prefer-native-element -->
         <ul class="custom-select-menu" role="listbox">
           <li class="custom-select-option" role="option" data-value="off">{{LOC_SCHEDULE_OFF}}</li>
           <li class="custom-select-option" role="option" data-value="daily">{{LOC_SCHEDULE_DAILY}}</li>
@@ -716,7 +718,7 @@
 
   <div class="section-label">{{LOC_CODE_INSIGHTS}}</div>
   <div class="settings-list">
-    <label class="setting-row">
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_FUNCTION_METRICS}}</div>
         <div class="setting-desc">{{LOC_FUNCTION_METRICS_DESC}}</div>
@@ -724,8 +726,8 @@
       <div class="toggle-switch" data-setting="showFunctionMetrics">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
-    <label class="setting-row">
+    </div>
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_METHOD_CALL_HOVER}}</div>
         <div class="setting-desc">{{LOC_METHOD_CALL_HOVER_DESC}}</div>
@@ -733,8 +735,8 @@
       <div class="toggle-switch" data-setting="showMethodCallHover">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
-    <label class="setting-row">
+    </div>
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_COMPLEXITY_WARNINGS}}</div>
         <div class="setting-desc">{{LOC_COMPLEXITY_WARNINGS_DESC}}</div>
@@ -742,8 +744,8 @@
       <div class="toggle-switch" data-setting="showComplexityWarnings">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
-    <label class="setting-row">
+    </div>
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_TYPE_HINT_COVERAGE}}</div>
         <div class="setting-desc">{{LOC_TYPE_HINT_COVERAGE_DESC}}</div>
@@ -751,8 +753,8 @@
       <div class="toggle-switch" data-setting="showTypeHintCoverage">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
-    <label class="setting-row">
+    </div>
+    <div class="setting-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_DOCSTRING_WARNINGS}}</div>
         <div class="setting-desc">{{LOC_DOCSTRING_WARNINGS_DESC}}</div>
@@ -760,7 +762,7 @@
       <div class="toggle-switch" data-setting="showDocstringWarnings">
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
       </div>
-    </label>
+    </div>
     <div class="setting-row select-row">
       <div class="setting-info">
         <div class="setting-name">{{LOC_LANGUAGE}}</div>
@@ -771,6 +773,7 @@
           <span class="custom-select-label">English</span>
           <span class="custom-select-chevron">▾</span>
         </button>
+        <!-- html-validate-disable-next prefer-native-element -->
         <ul class="custom-select-menu" role="listbox">
           <li class="custom-select-option" role="option" data-value="en">English</li>
           <li class="custom-select-option" role="option" data-value="it">Italiano</li>
@@ -854,7 +857,7 @@
           </div>
           <div class="author-links">
             <a class="author-link" id="link-github-maintainer">
-              <span class="author-link-icon">🐙</span> github.com/D3m0n92
+              <span class="author-link-icon">🐙</span> github.com/FaberVi
             </a>
             <a class="author-link" id="link-fork-repo">
               <span class="author-link-icon">📦</span> {{LOC_MAINTAINER_FORK_LINK}}

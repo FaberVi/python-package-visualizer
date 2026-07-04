@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none';
-             script-src 'nonce-{{NONCE}}' https://d3js.org;
+             script-src 'nonce-{{NONCE}}' {{CSP_SOURCE}};
              style-src 'nonce-{{NONCE}}' {{CSP_SOURCE}} 'unsafe-inline';
              style-src-elem 'nonce-{{NONCE}}' {{CSP_SOURCE}} 'unsafe-inline';
              style-src-attr 'unsafe-inline';
@@ -28,22 +28,23 @@
     <div id="header-actions">
       <button type="button" id="btn-add-pkg" class="hdr-btn" title="Install a new package">&#xFF0B; Add Package</button>
       <div id="export-wrap">
-        <button type="button" id="btn-export" class="hdr-btn" title="Export report">
-          &#x2B06; Export <span class="chevron">&#x25BE;</span>
+        <button type="button" id="btn-export" class="hdr-btn" title="Project tools">
+          🛠 Tools <span class="chevron">&#x25BE;</span>
         </button>
         <div id="export-menu">
-          <div class="export-section-label" style="padding:8px 14px 4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--vscode-descriptionForeground);">Export Report</div>
+          <div class="export-section-label" data-i18n="export.reportLabel" style="padding:8px 14px 4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--vscode-descriptionForeground);">Export Report</div>
           <div class="export-item" data-action="export-md">&#x1F4DD; Markdown</div>
           <div class="export-item" data-action="export-json">&#x7B;&#x7D; JSON</div>
           <div style="height:1px;background:var(--vscode-panel-border);margin:4px 0;"></div>
-          <div class="export-section-label" style="padding:6px 14px 4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--vscode-descriptionForeground);">Generate</div>
+          <div class="export-section-label" data-i18n="export.generateLabel" style="padding:6px 14px 4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--vscode-descriptionForeground);">Generate</div>
           <div class="export-item" data-action="gen-requirements">&#x1F4E6; requirements.txt from imports</div>
           <div class="export-item" data-action="gen-setup-bash">&#x1F427; Setup script (Bash)</div>
           <div class="export-item" data-action="gen-setup-ps">&#x1FA9F; Setup script (PowerShell)</div>
           <div class="export-item" data-action="gen-setup-md">&#x1F4D6; Setup README (Markdown)</div>
           <div style="height:1px;background:var(--vscode-panel-border);margin:4px 0;"></div>
-          <div class="export-section-label" style="padding:6px 14px 4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--vscode-descriptionForeground);">Migrate</div>
-          <div class="export-item" data-action="migrate-uv">&#x26A1; Migrate to uv</div>
+          <div class="export-section-label" data-i18n="export.migrateLabel" style="padding:6px 14px 4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--vscode-descriptionForeground);">Migrate</div>
+          <div class="export-item" data-action="migrate-uv-manual">&#x26A1; Migrate to uv (manual)</div>
+          <div class="export-item" data-action="migrate-uv-auto">&#x26A1; Migrate to uv (automatic)</div>
           <div class="export-item" data-action="migrate-poetry">&#x1F3AD; Migrate to Poetry</div>
         </div>
       </div>
@@ -185,7 +186,7 @@
     <!-- Dependency Graph -->
     <div id="view-graph">
       <div id="graph-toolbar">
-        <span>Scroll to zoom &nbsp;·&nbsp; Drag to pan &nbsp;·&nbsp; Click node to expand / view details</span>
+        <span id="graph-toolbar-hint">Scroll to zoom &nbsp;·&nbsp; Drag to pan &nbsp;·&nbsp; Click node for details &nbsp;·&nbsp; Double-click or orange dot to expand</span>
         <button type="button" class="graph-btn" id="graph-fit">⊡ Fit</button>
         <button type="button" class="graph-btn" id="graph-zoom-in">＋</button>
         <button type="button" class="graph-btn" id="graph-zoom-out">－</button>
@@ -445,7 +446,7 @@
   </div>
 
   <!-- D3.js -->
-  <script nonce="{{NONCE}}" src="https://d3js.org/d3.v7.min.js" crossorigin="anonymous"></script>
+  <script nonce="{{NONCE}}" src="{{D3_JS_URI}}"></script>
   <!-- Modular split scripts loaded sequentially -->
   <script nonce="{{NONCE}}" src="{{STATE_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{I18N_EN_JS_URI}}"></script>
@@ -453,6 +454,10 @@
   <script nonce="{{NONCE}}" src="{{I18N_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{UTILS_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{FILTERS_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TABLE_ROW_BUILDER_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TABLE_EVENTS_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TABLE_DIALOGS_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{TABLE_BULK_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{TABLE_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{MODAL_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{TOUR_JS_URI}}"></script>
@@ -467,6 +472,8 @@
   <script nonce="{{NONCE}}" src="{{TAB_VENV_HEALTH_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{TABS_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{DETAIL_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{MAIN_MESSAGE_ROUTER_JS_URI}}"></script>
+  <script nonce="{{NONCE}}" src="{{MAIN_DOM_SETUP_JS_URI}}"></script>
   <script nonce="{{NONCE}}" src="{{MAIN_JS_URI}}"></script>
 </body>
 </html>

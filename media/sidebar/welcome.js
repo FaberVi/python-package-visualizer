@@ -20,16 +20,16 @@ document.getElementById('btn-open').addEventListener('click', () =>
 );
 
 document.getElementById('link-docs').addEventListener('click', () =>
-  openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer#readme')
+  openUrl('https://github.com/FaberVi/python-package-visualizer#readme')
 );
 document.getElementById('link-changelog').addEventListener('click', () =>
-  openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer/blob/main/CHANGELOG.md')
+  openUrl('https://github.com/FaberVi/python-package-visualizer/blob/main/CHANGELOG.md')
 );
 document.getElementById('link-issue').addEventListener('click', () =>
-  openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer/issues/new')
+  openUrl('https://github.com/FaberVi/python-package-visualizer/issues/new')
 );
 document.getElementById('link-star').addEventListener('click', () =>
-  openUrl('https://github.com/Elanchezhiyan-P/python-package-visualizer')
+  openUrl('https://github.com/FaberVi/python-package-visualizer')
 );
 document.getElementById('link-portfolio').addEventListener('click', () =>
   openUrl('https://codebyelan.in')
@@ -41,10 +41,10 @@ document.getElementById('link-linkedin').addEventListener('click', () =>
   openUrl('https://www.linkedin.com/in/elanchezhiyan-p/')
 );
 document.getElementById('link-github-maintainer').addEventListener('click', () =>
-  openUrl('https://github.com/D3m0n92')
+  openUrl('https://github.com/FaberVi')
 );
 document.getElementById('link-fork-repo').addEventListener('click', () =>
-  openUrl('https://github.com/D3m0n92/python-package-visualizer')
+  openUrl('https://github.com/FaberVi/python-package-visualizer')
 );
 
 // ── Settings ─────────────────────────────────────────

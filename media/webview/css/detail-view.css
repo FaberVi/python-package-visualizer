@@ -89,6 +89,18 @@
   transform:  scale(1.05);
 }
 
+.version-chip-current {
+  background: color-mix(in srgb, #4ade80 18%, var(--vscode-badge-background));
+  border: 1px solid color-mix(in srgb, #4ade80 45%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.version-chip-current:hover {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  transform: scale(1.05);
+}
+
 /* ── Vulnerability Details ───────────────────────── */
 .vuln-card {
   margin-top: 6px;

@@ -29,6 +29,10 @@ const JS_ASSETS: JsAsset[] = [
   { segments: ['js', 'i18n.js'],              placeholder: 'I18N_JS_URI' },
   { segments: ['js', 'utils.js'],             placeholder: 'UTILS_JS_URI' },
   { segments: ['js', 'filters.js'],           placeholder: 'FILTERS_JS_URI' },
+  { segments: ['js', 'table', 'rowBuilder.js'], placeholder: 'TABLE_ROW_BUILDER_JS_URI' },
+  { segments: ['js', 'table', 'events.js'],     placeholder: 'TABLE_EVENTS_JS_URI' },
+  { segments: ['js', 'table', 'dialogs.js'],    placeholder: 'TABLE_DIALOGS_JS_URI' },
+  { segments: ['js', 'table', 'bulk.js'],       placeholder: 'TABLE_BULK_JS_URI' },
   { segments: ['js', 'table.js'],             placeholder: 'TABLE_JS_URI' },
   { segments: ['js', 'modal.js'],             placeholder: 'MODAL_JS_URI' },
   { segments: ['js', 'tour.js'],              placeholder: 'TOUR_JS_URI' },
@@ -43,6 +47,8 @@ const JS_ASSETS: JsAsset[] = [
   { segments: ['js', 'tabs', 'venv-health.js'], placeholder: 'TAB_VENV_HEALTH_JS_URI' },
   { segments: ['js', 'tabs.js'],              placeholder: 'TABS_JS_URI' },
   { segments: ['js', 'detail.js'],            placeholder: 'DETAIL_JS_URI' },
+  { segments: ['main', 'messageRouter.js'],   placeholder: 'MAIN_MESSAGE_ROUTER_JS_URI' },
+  { segments: ['main', 'domSetup.js'],        placeholder: 'MAIN_DOM_SETUP_JS_URI' },
   { segments: ['main.js'],                    placeholder: 'MAIN_JS_URI' },
 ];
 
@@ -70,6 +76,25 @@ const CSS_FILES: string[] = [
   'tabs/venv-health.css',
 ];
 
+/** Cache-bust token so webview reloads assets after local edits without a version bump. */
+export function getWebviewCacheBust(extensionUri: vscode.Uri): string {
+  const versionPath = path.join(extensionUri.fsPath, 'package.json');
+  let version = '0';
+  try {
+    version = JSON.parse(fs.readFileSync(versionPath, 'utf-8')).version ?? version;
+  } catch {
+    // fall back to mtime-only token
+  }
+
+  const graphPath = path.join(extensionUri.fsPath, 'media', 'webview', 'js', 'graph.js');
+  try {
+    const mtime = Math.floor(fs.statSync(graphPath).mtimeMs);
+    return `${version}.${mtime}`;
+  } catch {
+    return version;
+  }
+}
+
 /**
  * Reads the webview HTML template from disk, resolves all media asset URIs,
  * and interpolates security nonce + CSP source tokens.
@@ -80,20 +105,22 @@ const CSS_FILES: string[] = [
  */
 export function compileWebviewHtml(
   webview: vscode.Webview,
-  extensionUri: vscode.Uri
+  extensionUri: vscode.Uri,
+  cacheBust?: string
 ): string {
   const htmlPath = path.join(extensionUri.fsPath, 'media', 'webview', 'index.html');
   let html = fs.readFileSync(htmlPath, 'utf-8');
 
   const nonce = getNonce();
   const cspSource = webview.cspSource;
+  const versionQuery = `?v=${encodeURIComponent(cacheBust ?? getWebviewCacheBust(extensionUri))}`;
 
   // Build CSS <link> tags
   const cssLinks = CSS_FILES.map(file => {
     const uri = webview.asWebviewUri(
       vscode.Uri.joinPath(extensionUri, 'media', 'webview', 'css', file)
     );
-    return `<link rel="stylesheet" nonce="${nonce}" href="${uri.toString()}">`;
+    return `<link rel="stylesheet" nonce="${nonce}" href="${uri.toString()}${versionQuery}">`;
   }).join('\n  ');
 
   // Resolve JS asset URIs and build replacement map
@@ -106,8 +133,13 @@ export function compileWebviewHtml(
     const uri = webview.asWebviewUri(
       vscode.Uri.joinPath(extensionUri, 'media', 'webview', ...asset.segments)
     );
-    replacements.set(asset.placeholder, uri.toString());
+    replacements.set(asset.placeholder, `${uri.toString()}${versionQuery}`);
   }
+
+  const d3Uri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, 'media', 'webview', 'vendor', 'd3.v7.min.js')
+  );
+  replacements.set('D3_JS_URI', `${d3Uri.toString()}${versionQuery}`);
 
   // Apply all replacements in a single pass
   for (const [key, value] of replacements) {

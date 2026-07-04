@@ -19,6 +19,69 @@ window.esc = function (str) {
     .replace(/"/g, '&quot;');
 };
 
+/** PEP 503 package name normalization (matches backend normalizeName). */
+window.normalizePkgName = function (name) {
+  return String(name ?? '').toLowerCase().replace(/[-_.]+/g, '-');
+};
+
+/** True when a string is pip show metadata, not a real package name (matches backend). */
+window.isPipMetadataToken = function (value) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  if (/^required-by\b/i.test(raw) || /^requires\b/i.test(raw) || raw.includes('required-by')) {
+    return true;
+  }
+  return false;
+};
+
+/** Drops pip show metadata accidentally parsed as dependency names (matches backend). */
+window.sanitizeRequiresList = function (requires) {
+  return (requires ?? [])
+    .map(r => String(r).trim())
+    .filter(r => r.length > 0 && !window.isPipMetadataToken(r))
+    .map(r => window.normalizePkgName(r))
+    .filter(r => r.length > 0 && !window.isPipMetadataToken(r));
+};
+
+/**
+ * Renders a button that installs the pip requirement suggested by a conflict row.
+ *
+ * @param {{ requirement: string, conflictingPackage: string }} conflict
+ * @returns {string}
+ */
+window.conflictFixButtonHtml = function (conflict) {
+  if (!conflict?.requirement || !conflict?.conflictingPackage) {
+    return '';
+  }
+  const label = (window.t ? window.t('btn.fixConflict') : '🔧 Install {spec}')
+    .replace('{spec}', conflict.requirement);
+  const title = window.t ? window.t('btn.fixConflictTitle') : 'Install the required version to resolve this conflict';
+  return `<button class="action-btn fix-conflict-btn" data-spec="${window.esc(conflict.requirement)}" data-package="${window.esc(conflict.conflictingPackage)}" title="${window.esc(title)}">${window.esc(label)}</button>`;
+};
+
+/**
+ * Wires click handlers for conflict fix buttons inside a container element.
+ *
+ * @param {ParentNode} root
+ */
+window.wireConflictFixButtons = function (root) {
+  if (!root) return;
+  root.querySelectorAll('.fix-conflict-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const spec = btn.dataset.spec;
+      const packageName = btn.dataset.package;
+      if (!spec || !packageName || !window.vscode) return;
+      btn.disabled = true;
+      const applying = window.t ? window.t('btn.fixConflictApplying') : 'Applying fix…';
+      btn.textContent = applying;
+      window.vscode.postMessage({ type: 'fixConflict', requirement: spec, packageName });
+    });
+  });
+};
+
 /**
  * Formats package weekly download numbers into a concise human-readable string.
  * This ensures the layout is not cluttered by large digit counts.

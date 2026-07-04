@@ -37,9 +37,13 @@ window.showDetail = function (pkg) {
   const vscode = window.vscode;
 
   const history = pkg.allVersions || [];
-  const versionChips = history.slice(0, 20).map(v =>
-    `<span class="version-chip" data-version="${esc(v)}" data-pkg="${esc(pkg.name)}" title="${window.t ? window.t('detail.availableVersions') : 'Install'} ${esc(v)}">${esc(v)}</span>`
-  ).join('');
+  const versionChips = history.slice(0, 20).map(v => {
+    const isCurrent = v === pkg.installedVersion;
+    const title = isCurrent
+      ? (window.t ? window.t('detail.versionCurrent') : 'Currently installed')
+      : (window.t ? window.t('detail.installVersionHint') : 'Install') + ' ' + v;
+    return `<span class="version-chip${isCurrent ? ' version-chip-current' : ''}" data-version="${esc(v)}" data-pkg="${esc(pkg.name)}" title="${esc(title)}">${esc(v)}${isCurrent ? ' ✓' : ''}</span>`;
+  }).join('');
 
   const pkgConflicts = conflictsByPkg.get(normName) || [];
   const conflictsHtml = pkgConflicts.length > 0 ? `
@@ -52,6 +56,7 @@ window.showDetail = function (pkg) {
             ? `<strong>${esc(c.conflictingPackage)}</strong> is not installed`
             : `But <strong>${esc(c.conflictingPackage)} ${esc(c.conflictingVersion)}</strong> is installed`
         }</div>
+        ${window.conflictFixButtonHtml ? `<div style="margin-top:8px;">${window.conflictFixButtonHtml(c)}</div>` : ''}
       </div>`).join('')}
     </div>
   ` : '';
@@ -190,33 +195,33 @@ window.showDetail = function (pkg) {
     });
   });
 
-  // Install a specific version on chip click
+  // Install a specific version on chip click (with confirmation)
   elDetailBody.querySelectorAll('.version-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      if (vscode) {
-        vscode.postMessage({
-          type: 'rollbackPackage',
-          name: chip.dataset.pkg,
-          version: chip.dataset.version,
-        });
-      }
-      elDetail.style.display = 'none';
-      elOverlay.style.display = 'none';
+      const name = chip.dataset.pkg;
+      const version = chip.dataset.version;
+      if (!name || !version || !vscode) return;
+      window.showVersionInstallConfirmDialog?.(name, version, () => {
+        vscode.postMessage({ type: 'rollbackPackage', name, version });
+        elDetail.style.display = 'none';
+        elOverlay.style.display = 'none';
+      });
     });
   });
 
   elDetailBody.querySelectorAll('.detail-rollback-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (vscode && btn.dataset.name && btn.dataset.version) {
+      if (!vscode || !btn.dataset.name || !btn.dataset.version) return;
+      window.showVersionInstallConfirmDialog?.(btn.dataset.name, btn.dataset.version, () => {
         btn.disabled = true;
         vscode.postMessage({
           type: 'rollbackPackage',
           name: btn.dataset.name,
           version: btn.dataset.version,
         });
-      }
-      elDetail.style.display = 'none';
-      elOverlay.style.display = 'none';
+        elDetail.style.display = 'none';
+        elOverlay.style.display = 'none';
+      });
     });
   });
 
@@ -232,6 +237,8 @@ window.showDetail = function (pkg) {
       });
     });
   });
+
+  window.wireConflictFixButtons?.(elDetailBody);
 
   elDetail.style.display = 'block';
   elOverlay.style.display = 'block';

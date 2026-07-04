@@ -64,16 +64,22 @@ window.applyStaticTranslations = function () {
   const elTitle = document.getElementById('header-h1');
   const elSub = document.getElementById('header-sub');
   const elBtnAddPkg = document.getElementById('btn-add-pkg');
+  const elBtnExport = document.getElementById('btn-export');
   const elBtnRefresh = document.getElementById('btn-refresh');
 
   if (elTitle) elTitle.textContent = t('header.title');
   if (elSub) elSub.textContent = t('header.subtitle');
   if (elBtnAddPkg) elBtnAddPkg.textContent = t('header.addPackage');
+  if (elBtnExport) {
+    elBtnExport.title = t('header.toolsTitle');
+    elBtnExport.innerHTML = `${t('header.tools')} <span class="chevron">&#x25BE;</span>`;
+  }
   if (elBtnRefresh) elBtnRefresh.innerHTML = `&#x21BB; ${t('header.refresh')}`;
 
-  // Export options translations
-  const exportLabelReport = document.querySelector('.export-section-label');
-  if (exportLabelReport) exportLabelReport.textContent = t('export.reportLabel');
+  // Tools menu translations
+  document.querySelectorAll('.export-section-label[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
 
   document.querySelectorAll('.export-item').forEach(item => {
     const action = item.dataset.action;
@@ -83,7 +89,8 @@ window.applyStaticTranslations = function () {
     if (action === 'gen-setup-bash') item.innerHTML = t('export.genBash');
     if (action === 'gen-setup-ps') item.innerHTML = t('export.genPs');
     if (action === 'gen-setup-md') item.innerHTML = t('export.genMd');
-    if (action === 'migrate-uv') item.innerHTML = t('export.migrateUv');
+    if (action === 'migrate-uv-manual') item.innerHTML = t('export.migrateUvManual');
+    if (action === 'migrate-uv-auto') item.innerHTML = t('export.migrateUvAuto');
     if (action === 'migrate-poetry') item.innerHTML = t('export.migratePoetry');
   });
 
@@ -132,6 +139,11 @@ window.applyStaticTranslations = function () {
   if (labelVuln) labelVuln.textContent = t('stats.vulnerable');
   if (labelStale) labelStale.textContent = t('stats.stale');
   if (labelConflict) labelConflict.textContent = t('stats.conflicts');
+
+  const elGraphHint = document.getElementById('graph-toolbar-hint');
+  const elGraphFit = document.getElementById('graph-fit');
+  if (elGraphHint) elGraphHint.textContent = t('graph.hint');
+  if (elGraphFit) elGraphFit.textContent = t('graph.fit');
 
   document.querySelectorAll('#stats-bar .stat-card.clickable').forEach(card => {
     card.title = t('stats.clickToFilter');

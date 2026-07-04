@@ -4,20 +4,182 @@
  * Loaded sequentially after utils.js to leverage esc() and styling rules.
  */
 
+const GRAPH_MAX_DEPTH = 4;
+const GRAPH_DEFAULT_COLLAPSE_DEPTH = 2;
+
 // Module-level D3 zoom instances accessible to toolbar controls
 window._graphZoom = null;
 window._graphSvg = null;
 window._graphFitFn = null;
+window._graphResizeObserver = null;
+
+/** @returns {string} PEP 503 normalized package name */
+function normalizeName(name) {
+  return window.normalizePkgName ? window.normalizePkgName(name) : String(name ?? '').toLowerCase();
+}
+
+/** @param {string} name */
+function isValidRequireName(name) {
+  const raw = String(name ?? '').trim().toLowerCase();
+  if (!raw || raw.includes('required-by') || /^requires\b/i.test(raw)) {
+    return false;
+  }
+  const norm = normalizeName(name);
+  return norm.length > 0 && !norm.includes('required-by');
+}
+
+/** @param {Array<object>} pkgs */
+function sanitizePackageRequires(pkgs) {
+  return (pkgs || []).map(pkg => ({
+    ...pkg,
+    requires: (pkg.requires || []).filter(r => r && isValidRequireName(r)),
+  }));
+}
+
+/**
+ * Builds a lookup map keyed by normalized package name.
+ * Declared packages (allPackages) take precedence over transitive graphPackages.
+ *
+ * @param {Array<object>} declared
+ * @param {Array<object>} transitive
+ * @returns {Map<string, object>}
+ */
+function buildPkgLookup(declared, transitive) {
+  const lookup = new Map();
+  for (const pkg of transitive || []) {
+    lookup.set(normalizeName(pkg.name), pkg);
+  }
+  for (const pkg of declared || []) {
+    lookup.set(normalizeName(pkg.name), pkg);
+  }
+  return lookup;
+}
+
+/**
+ * Resolves display status for a graph node.
+ *
+ * @param {object|null} pkg
+ * @param {string} reqName
+ * @returns {string}
+ */
+function resolveNodeStatus(pkg, reqName) {
+  if (!pkg) {
+    return 'not-installed';
+  }
+  if (pkg.vulnerabilities && pkg.vulnerabilities.length) {
+    return 'vulnerable';
+  }
+  if (pkg.status === 'not-installed' || !pkg.installedVersion) {
+    return 'not-installed';
+  }
+  return pkg.status || 'unknown';
+}
+
+/**
+ * Builds a recursive dependency tree node.
+ *
+ * @param {string} reqName
+ * @param {Map<string, object>} lookup
+ * @param {number} depth
+ * @param {number} maxDepth
+ * @param {Set<string>} pathNorms - ancestor normalized names (cycle guard)
+ * @returns {object|null}
+ */
+function buildReqNode(reqName, lookup, depth, maxDepth, pathNorms) {
+  if (!isValidRequireName(reqName)) {
+    return null;
+  }
+
+  const norm = normalizeName(reqName);
+  if (pathNorms.has(norm)) {
+    return null;
+  }
+
+  const pkg = lookup.get(norm) || null;
+  const node = {
+    name: pkg ? pkg.name : reqName,
+    status: resolveNodeStatus(pkg, reqName),
+    version: pkg ? (pkg.installedVersion || '') : '',
+    pkg,
+    children: [],
+  };
+
+  if (depth >= maxDepth) {
+    return node;
+  }
+
+  const requires = pkg?.requires || [];
+  const nextPath = new Set(pathNorms);
+  nextPath.add(norm);
+
+  node.children = requires
+    .filter(r => r && isValidRequireName(r))
+    .map(r => buildReqNode(r, lookup, depth + 1, maxDepth, nextPath))
+    .filter(Boolean);
+
+  if (!node.children.length) {
+    delete node.children;
+  }
+
+  return node;
+}
+
+/**
+ * Builds the full tree payload for D3 hierarchy.
+ *
+ * @param {Array<object>} packages
+ * @param {Map<string, object>} lookup
+ * @returns {object}
+ */
+function buildTreeData(packages, lookup) {
+  return {
+    name: 'Project',
+    status: 'root',
+    children: packages.map(pkg => {
+      const rootNorm = normalizeName(pkg.name);
+      const requires = pkg.requires || [];
+      const pathNorms = new Set([rootNorm]);
+
+      const children = requires
+        .filter(r => r && isValidRequireName(r))
+        .map(r => buildReqNode(r, lookup, 1, GRAPH_MAX_DEPTH, pathNorms))
+        .filter(Boolean);
+
+      return {
+        name: pkg.name,
+        status: resolveNodeStatus(pkg, pkg.name),
+        version: pkg.installedVersion || '',
+        pkg,
+        children: children.length ? children : undefined,
+      };
+    }),
+  };
+}
+
+/** Stable hierarchical key for D3 data joins. */
+function nodePathKey(d) {
+  return d.ancestors().map(n => n.data.name).join('/');
+}
+
+/** Stable key for link targets. */
+function linkTargetKey(d) {
+  return nodePathKey(d.target);
+}
 
 /**
  * Renders an interactive D3.js hierarchical tree of dependencies.
- * Allows visual inspection of transient packages and updates/conflicts.
- * 
+ *
  * @param {Array<object>} packages - The filtered set of package items.
  */
 window.renderGraph = function (packages) {
   const canvas = document.getElementById('graph-canvas');
   if (!canvas) return;
+
+  if (window._graphResizeObserver) {
+    window._graphResizeObserver.disconnect();
+    window._graphResizeObserver = null;
+  }
+
   canvas.innerHTML = '';
   window._graphZoom = null;
   window._graphSvg = null;
@@ -34,51 +196,31 @@ window.renderGraph = function (packages) {
   }
 
   try {
-    const allPkgs = window.allPackages || [];
+    const declared = sanitizePackageRequires(packages);
+    const lookup = buildPkgLookup(
+      sanitizePackageRequires(window.allPackages || []),
+      sanitizePackageRequires(window.graphPackages || [])
+    );
+    const treeData = buildTreeData(declared, lookup);
 
-    // ── Build hierarchy ──────────────────────────────────────────────────
-    const treeData = {
-      name: 'Project',
-      status: 'root',
-      children: packages.map(pkg => ({
-        name: pkg.name,
-        status: pkg.vulnerabilities && pkg.vulnerabilities.length ? 'vulnerable' : (pkg.status || 'unknown'),
-        version: pkg.installedVersion || '',
-        pkg,
-        children: (pkg.requires || []).filter(r => r).map(req => {
-          const dep = allPkgs.find(p => p.name.toLowerCase() === req.toLowerCase());
-          return {
-            name: req,
-            status: dep ? (dep.vulnerabilities && dep.vulnerabilities.length ? 'vulnerable' : dep.status) : 'unknown',
-            version: dep ? (dep.installedVersion || '') : '',
-            pkg: dep || null,
-          };
-        }),
-      })),
-    };
+    let W = canvas.clientWidth || 860;
+    let H = canvas.clientHeight || 520;
 
-    // ── Dimensions ───────────────────────────────────────────────────────
-    const W = canvas.clientWidth  || 860;
-    const H = canvas.clientHeight || 520;
-
-    // Count visible leaves to ensure enough vertical room
     const tempRoot = d3.hierarchy(treeData);
-    // Collapse depth > 1 by default
     tempRoot.descendants().forEach(d => {
-      if (d.depth > 1 && d.children) {
+      if (d.depth > GRAPH_DEFAULT_COLLAPSE_DEPTH && d.children) {
         d._children = d.children;
-        d.children  = null;
+        d.children = null;
       }
     });
     const visibleLeaves = Math.max(1, tempRoot.leaves().length);
-    const NODE_SEP   = 26;   // px between sibling nodes
+    const NODE_SEP = 26;
     const treeHeight = Math.max(H - 60, visibleLeaves * NODE_SEP);
-    const DEPTH_GAP  = Math.min(220, Math.max(160, (W - 120) / 3)); // px per tree level
+    const DEPTH_GAP = Math.min(220, Math.max(160, (W - 120) / Math.max(3, GRAPH_MAX_DEPTH)));
 
-    // ── SVG setup ────────────────────────────────────────────────────────
     const svg = d3.select('#graph-canvas')
       .append('svg')
-      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('viewBox', `0 0 ${W} ${treeHeight}`)
       .attr('preserveAspectRatio', 'xMidYMid meet');
 
     const g = svg.append('g');
@@ -88,43 +230,54 @@ window.renderGraph = function (packages) {
       .on('zoom', ev => g.attr('transform', ev.transform));
     svg.call(zoom).on('dblclick.zoom', null);
     window._graphZoom = zoom;
-    window._graphSvg  = svg;
+    window._graphSvg = svg;
 
-    // ── Hierarchy + layout ───────────────────────────────────────────────
     const root = d3.hierarchy(treeData);
     root.descendants().forEach(d => {
-      if (d.depth > 1 && d.children) {
+      if (d.depth > GRAPH_DEFAULT_COLLAPSE_DEPTH && d.children) {
         d._children = d.children;
-        d.children  = null;
+        d.children = null;
       }
     });
 
-    /** Fits tree bounding box into the viewport with padding */
     function fitView() {
       try {
         const box = g.node().getBBox();
         if (!box || box.width === 0) return;
+        const viewH = Math.max(H, treeHeight);
         const pad = 40;
-        const scale = Math.min(0.95, (W - pad * 2) / box.width, (H - pad * 2) / box.height);
-        const tx = W / 2 - (box.x + box.width  / 2) * scale;
-        const ty = H / 2 - (box.y + box.height / 2) * scale;
+        const scale = Math.min(0.95, (W - pad * 2) / box.width, (viewH - pad * 2) / box.height);
+        const tx = W / 2 - (box.x + box.width / 2) * scale;
+        const ty = viewH / 2 - (box.y + box.height / 2) * scale;
         svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
       } catch (_) {}
     }
     window._graphFitFn = fitView;
 
+    function toggleNode(d) {
+      if (d.children) {
+        d._children = d.children;
+        d.children = null;
+      } else if (d._children) {
+        d.children = d._children;
+        d._children = null;
+      } else {
+        return false;
+      }
+      return true;
+    }
+
     function update() {
       const layout = d3.tree()
-        .nodeSize([NODE_SEP, DEPTH_GAP])
+        .size([treeHeight - 40, W - 120])
         .separation((a, b) => (a.parent === b.parent ? 1 : 1.4));
       layout(root);
 
       const nodes = root.descendants();
       const links = root.links();
 
-      // ── Links ──────────────────────────────────────────────────────────
       const linkSel = g.selectAll('.link')
-        .data(links, d => d.target.id || (d.target.id = Math.random()));
+        .data(links, linkTargetKey);
 
       linkSel.enter().append('path')
         .attr('class', 'link')
@@ -133,17 +286,18 @@ window.renderGraph = function (packages) {
 
       linkSel.exit().remove();
 
-      // ── Nodes ──────────────────────────────────────────────────────────
       const nodeSel = g.selectAll('.node')
-        .data(nodes, d => d.data.name + '-' + d.depth);
+        .data(nodes, nodePathKey);
 
       const nodeEnter = nodeSel.enter().append('g')
         .attr('transform', d => `translate(${d.y},${d.x})`);
 
       nodeEnter.append('circle')
+        .attr('class', 'node-circle')
         .attr('r', d => d.depth === 0 ? 12 : 7);
 
       nodeEnter.append('text')
+        .attr('class', 'node-label')
         .attr('dy', '0.32em')
         .attr('x', d => d.depth === 0 ? 18 : ((d.children || d._children) ? -12 : 12))
         .style('text-anchor', d => d.depth === 0 ? 'start' : ((d.children || d._children) ? 'end' : 'start'))
@@ -152,7 +306,6 @@ window.renderGraph = function (packages) {
           return d.data.name + v;
         });
 
-      // Expand/collapse indicator dot for collapsed nodes
       nodeEnter.filter(d => d._children)
         .append('circle')
         .attr('class', 'expand-dot')
@@ -164,22 +317,19 @@ window.renderGraph = function (packages) {
 
       nodeMerge
         .attr('class', d => {
-          const cls = [
+          return [
             'node',
             d.data.status || 'unknown',
             d.depth === 0 ? 'root' : '',
             d._children ? 'collapsed' : '',
           ].filter(Boolean).join(' ');
-          return cls;
         })
         .attr('transform', d => `translate(${d.y},${d.x})`);
 
-      // Update text anchor on merge (children may have changed)
-      nodeMerge.select('text')
+      nodeMerge.select('.node-label')
         .attr('x', d => d.depth === 0 ? 18 : ((d.children || d._children) ? -12 : 12))
         .style('text-anchor', d => d.depth === 0 ? 'start' : ((d.children || d._children) ? 'end' : 'start'));
 
-      // Update expand-dot visibility
       nodeMerge.selectAll('.expand-dot').remove();
       nodeMerge.filter(d => d._children && d.depth > 0)
         .append('circle')
@@ -187,30 +337,46 @@ window.renderGraph = function (packages) {
         .attr('r', 3).attr('cx', 10).attr('cy', -9)
         .style('fill', 'var(--c-update)').style('stroke', 'none');
 
-      nodeMerge.on('click', (event, d) => {
-        event.stopPropagation();
-        if (d.children) {
-          d._children = d.children;
-          d.children  = null;
-        } else if (d._children) {
-          d.children  = d._children;
-          d._children = null;
-        }
-        if (d.data.pkg && typeof window.showDetail === 'function') {
-          window.showDetail(d.data.pkg);
-        }
-        update();
-      });
+      nodeMerge.select('.expand-dot')
+        .style('pointer-events', 'all')
+        .style('cursor', 'pointer')
+        .on('click', (event, d) => {
+          event.stopPropagation();
+          if (toggleNode(d)) {
+            update();
+            setTimeout(fitView, 30);
+          }
+        });
+
+      nodeMerge
+        .on('click', (event, d) => {
+          event.stopPropagation();
+          if (d.data.pkg && typeof window.showDetail === 'function') {
+            window.showDetail(d.data.pkg);
+          }
+        })
+        .on('dblclick', (event, d) => {
+          event.stopPropagation();
+          if (toggleNode(d)) {
+            update();
+            setTimeout(fitView, 30);
+          }
+        });
 
       nodeSel.exit().remove();
     }
 
     update();
-
-    // Auto-fit after first render (small delay for layout to settle)
     setTimeout(fitView, 60);
 
-    // ── Legend (absolute overlay) ────────────────────────────────────────
+    window._graphResizeObserver = new ResizeObserver(() => {
+      W = canvas.clientWidth || W;
+      H = canvas.clientHeight || H;
+      svg.attr('viewBox', `0 0 ${W} ${Math.max(H - 60, root.leaves().length * NODE_SEP)}`);
+      fitView();
+    });
+    window._graphResizeObserver.observe(canvas);
+
     const legend = document.createElement('div');
     legend.className = 'graph-legend';
     legend.innerHTML = `
@@ -233,7 +399,6 @@ window.renderGraph = function (packages) {
   }
 };
 
-// ── Graph Toolbar Button Event Handlers ─────────────────────────────────────
 document.getElementById('graph-fit')?.addEventListener('click', () => {
   if (window._graphFitFn) window._graphFitFn();
 });

@@ -1,0 +1,92 @@
+/** Binds interactive listeners on rendered package table rows. */
+window.bindTableRowEvents = function (tbody) {
+  tbody.querySelectorAll('.pkg-check').forEach(chk => {
+    chk.addEventListener('change', e => {
+      e.stopPropagation();
+      const name = chk.dataset.name;
+      if (chk.checked) {
+        window.selectedPackages.add(name);
+      } else {
+        window.selectedPackages.delete(name);
+      }
+      window.updateBulkBar();
+    });
+  });
+
+  tbody.querySelectorAll('.pkg-detail-trigger').forEach(trigger => {
+    trigger.addEventListener('click', e => {
+      e.stopPropagation();
+      const pkg = window.allPackages.find(p => p.name === trigger.dataset.name);
+      if (pkg && typeof window.showDetail === 'function') {
+        window.showDetail(pkg);
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.rollback-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const version = btn.dataset.version;
+      if (name && version) {
+        window.showVersionInstallConfirmDialog?.(name, version, () => {
+          btn.disabled = true;
+          btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.reverting')}`;
+          window.vscode.postMessage({ type: 'rollbackPackage', name, version });
+        });
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.force-update-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (!name) return;
+      window.showForceUpdateConfirmDialog?.(name, () => {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.updating')}`;
+        window.vscode.postMessage({ type: 'forceUpdatePackage', name });
+      });
+    });
+  });
+
+  tbody.querySelectorAll('.update-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (name) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.updating')}`;
+        window.vscode.postMessage({ type: 'updatePackage', name });
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.install-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (name) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.installing')}`;
+        window.vscode.postMessage({ type: 'installNew', name });
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.sync-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const source = btn.dataset.source;
+      if (name) {
+        window.showSyncConfirmDialog(() => {
+          btn.disabled = true;
+          btn.innerHTML = `<span class="btn-spinner"></span>...`;
+          window.vscode.postMessage({ type: 'syncRequirementsToInstalled', name, source });
+        });
+      }
+    });
+  });
+};

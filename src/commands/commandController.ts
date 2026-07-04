@@ -23,9 +23,11 @@ import { MigrationHandler } from './handlers/migrationHandler.js';
 import { VisualizerHandler } from './handlers/visualizerHandler.js';
 import { UtilityHandler } from './handlers/utilityHandler.js';
 import { UnusedAiHandler } from './handlers/unusedAiHandler.js';
+import { routeSidebarMessage, routeWebviewMessage } from './commandController/messageRouter.js';
 
 import type { ScannedPackage } from '../modules/packageScanner.js';
 import type { VersionCheckResult } from '../services/versionChecker.js';
+import { getConflictInstallSpec } from '../utils/conflictFix.js';
 
 /**
  * Orchestrates extension commands, webview interactions, and background tasks.
@@ -38,6 +40,8 @@ export class CommandController {
   private readonly migrationHelper: MigrationHelper;
   private readonly setupGen: SetupScriptGenerator;
   private readonly venvHealthChecker: VenvHealthChecker;
+  private readonly logger: Logger;
+  private readonly scanner: PackageScanner;
 
   // Domain command handlers
   private readonly installerHandler: PackageInstaller;
@@ -75,6 +79,8 @@ export class CommandController {
     private readonly sidebar?: SidebarProvider,
     statusBar?: StatusBarManager
   ) {
+    this.logger = logger;
+    this.scanner = scanner;
     this.reqSync = new RequirementsSync(logger);
     this.snapshotMgr = new SnapshotManager(context.globalStorageUri.fsPath, logger);
     this.reqGen = new RequirementsGenerator(logger, new (class {
@@ -125,8 +131,11 @@ export class CommandController {
 
     this.migrationHandler = new MigrationHandler(
       this.migrationHelper,
+      scanner,
+      context,
       logger,
-      getRoot
+      getRoot,
+      refreshView
     );
 
     this.visualizerHandler = new VisualizerHandler(
@@ -213,152 +222,69 @@ export class CommandController {
         void this.unusedAiHandler.sendCapabilities();
         return;
       }
-
-      switch (msg.type) {
-        case 'updatePackage':
-          void this.updatePackage(msg.name);
-          break;
-        case 'forceUpdatePackage':
-          void this.updatePackage(msg.name);
-          break;
-        case 'rollbackPackage':
-          void this.rollbackPackage(msg.name, msg.version);
-          break;
-        case 'updateAllPackages':
-          void this.updateAllPackages(msg.names);
-          break;
-        case 'refresh':
-          void this.visualizerHandler.showVisualizer();
-          break;
-        case 'openUrl':
-          void vscode.env.openExternal(vscode.Uri.parse((msg as { type: string; url: string }).url));
-          break;
-        case 'installNew':
-          void this.installNewPackage(
-            (msg as { type: string; name: string; version?: string }).name,
-            (msg as { type: string; name: string; version?: string }).version
-          );
-          break;
-        case 'searchPypi':
-          void this.utilityHandler.searchPypi((msg as { type: string; query: string }).query);
-          break;
-        case 'exportReport':
-          void this.exportReport((msg as { type: string; format: 'markdown' | 'json' }).format);
-          break;
-        case 'removeFromRequirements':
-          void this.removeFromRequirements(
-            (msg as { type: string; name: string; source: string }).name,
-            (msg as { type: string; name: string; source: string }).source
-          );
-          break;
-        case 'pinVersion': {
-          const m = msg as { type: string; name: string; version: string; source: string };
-          void this.pinVersion(m.name, m.version, m.source);
-          break;
-        }
-        case 'createRequirements':
-          void this.createRequirementsFile();
-          break;
-        case 'bulkUpdate': {
-          const m = msg as { type: string; names: string[] };
-          void this.updateAllPackages(m.names);
-          break;
-        }
-        case 'bulkSync': {
-          const m = msg as { type: string; packages: Array<{ name: string; source: string }> };
-          void this.bulkSyncRequirementsToInstalled(m.packages);
-          break;
-        }
-        case 'bulkRemove': {
-          const m = msg as { type: string; names: string[]; sources: string[] };
-          for (let i = 0; i < m.names.length; i++) {
-            await this.removeFromRequirements(m.names[i], m.sources[i] ?? '');
-          }
-          break;
-        }
-        case 'takeSnapshot':
-          this.snapshotHandler.takeSnapshot((msg as { type: string; name: string }).name, this.lastPackages);
-          break;
-        case 'restoreSnapshot':
-          void this.snapshotHandler.restoreSnapshot((msg as { type: string; id: string }).id);
-          break;
-        case 'deleteSnapshot':
-          void this.snapshotHandler.deleteSnapshot((msg as { type: string; id: string }).id);
-          break;
-        case 'listSnapshots':
-          this.snapshotHandler.listSnapshots();
-          break;
-        case 'generateRequirements':
-          void this.generateRequirements();
-          break;
-        case 'migrateToUv':
-          void this.migrateToUv();
-          break;
-        case 'migrateToPoetry':
-          void this.migrateToPoetry();
-          break;
-        case 'selectManualRequirements':
-          void this.selectManualRequirements();
-          break;
-        case 'clearManualRequirements':
-          void this.clearManualRequirements();
-          break;
-        case 'generateSetupScript': {
-          const m = msg as { type: string; format: 'bash' | 'powershell' | 'markdown' };
-          void this.utilityHandler.generateSetupScript(m.format);
-          break;
-        }
-        case 'syncRequirementsToInstalled': {
-          const m = msg as { type: string; name: string; source: string };
-          void this.syncRequirementsToInstalled(m.name, m.source);
-          break;
-        }
-        case 'requestVenvHealth':
-          void this.handleVenvHealthRequest();
-          break;
-        case 'updatePip':
-          void this.handleUpdatePip();
-          break;
-        case 'cursorAnalyzeUnused': {
-          const m = msg as { type: string; packageNames?: string[] };
-          const state = this.visualizerHandler.getUnusedAiScanState();
-          if (state) {
-            this.unusedAiHandler.setScanState(state);
-          }
-          void this.unusedAiHandler.analyzeUnusedWithCursor(m.packageNames);
-          break;
-        }
-      }
+      routeWebviewMessage(this.getMessageRouterDeps(), msg);
     });
 
-    // Route messages from sidebar to correct handlers
     if (this.sidebar) {
       this.sidebar.onMessage(msg => {
-        const m = msg as { type: string; url?: string; name?: string; version?: string; names?: string[] };
-        switch (m.type) {
-          case 'openPanel':
-            void this.visualizerHandler.showVisualizer();
-            break;
-          case 'openUrl':
-            if (m.url) {
-              void vscode.env.openExternal(vscode.Uri.parse(m.url));
-            }
-            break;
-          case 'updatePackage':
-            void this.updatePackage(m.name ?? '');
-            break;
-          case 'rollbackPackage':
-            void this.rollbackPackage(m.name ?? '', m.version ?? '');
-            break;
-          case 'updateAllPackages':
-            void this.updateAllPackages(m.names ?? []);
-            break;
-          case 'refresh':
-            void this.visualizerHandler.showVisualizer();
-            break;
-        }
+        routeSidebarMessage(this.getMessageRouterDeps(), msg as {
+          type: string;
+          url?: string;
+          name?: string;
+          version?: string;
+          names?: string[];
+        });
       });
     }
+  }
+
+  private getMessageRouterDeps() {
+    return {
+      showVisualizer: async () => {
+        await this.visualizerHandler.showVisualizer();
+        void this.unusedAiHandler.sendCapabilities();
+      },
+      sendCapabilities: () => { void this.unusedAiHandler.sendCapabilities(); },
+      updatePackage: (name: string) => this.updatePackage(name),
+      fixConflict: (requirement: string, packageName: string) => this.fixConflict(requirement, packageName),
+      rollbackPackage: (name: string, version: string) => this.rollbackPackage(name, version),
+      updateAllPackages: (names: string[]) => this.updateAllPackages(names),
+      installNewPackage: (name: string, version?: string) => this.installNewPackage(name, version),
+      searchPypi: (query: string) => this.utilityHandler.searchPypi(query),
+      exportReport: (format: 'markdown' | 'json') => this.exportReport(format),
+      removeFromRequirements: (name: string, source: string) => this.removeFromRequirements(name, source),
+      pinVersion: (name: string, version: string, source: string) => this.pinVersion(name, version, source),
+      createRequirementsFile: () => this.createRequirementsFile(),
+      bulkSyncRequirementsToInstalled: (packages: Array<{ name: string; source: string }>) =>
+        this.bulkSyncRequirementsToInstalled(packages),
+      bulkRemoveFromRequirements: async (names: string[], sources: string[]) => {
+        for (let i = 0; i < names.length; i++) {
+          await this.removeFromRequirements(names[i], sources[i] ?? '');
+        }
+      },
+      takeSnapshot: (name: string) => this.snapshotHandler.takeSnapshot(name, this.lastPackages),
+      restoreSnapshot: (id: string) => this.snapshotHandler.restoreSnapshot(id),
+      deleteSnapshot: (id: string) => this.snapshotHandler.deleteSnapshot(id),
+      listSnapshots: () => this.snapshotHandler.listSnapshots(),
+      generateRequirements: () => this.generateRequirements(),
+      migrateToUv: (mode: 'manual' | 'automatic') => this.migrateToUv(mode),
+      migrateToPoetry: () => this.migrateToPoetry(),
+      selectManualRequirements: () => this.selectManualRequirements(),
+      clearManualRequirements: () => this.clearManualRequirements(),
+      generateSetupScript: (format: 'bash' | 'powershell' | 'markdown') =>
+        this.utilityHandler.generateSetupScript(format),
+      syncRequirementsToInstalled: (name: string, source: string) =>
+        this.syncRequirementsToInstalled(name, source),
+      handleVenvHealthRequest: () => this.handleVenvHealthRequest(),
+      handleUpdatePip: () => this.handleUpdatePip(),
+      analyzeUnusedWithCursor: async (packageNames?: string[]) => {
+        const state = this.visualizerHandler.getUnusedAiScanState();
+        if (state) {
+          this.unusedAiHandler.setScanState(state);
+        }
+        await this.unusedAiHandler.analyzeUnusedWithCursor(packageNames);
+      },
+    };
   }
 
   /**
@@ -371,6 +297,7 @@ export class CommandController {
   // --- Wrapper Delegates ---
 
   async updatePackage(packageName: string): Promise<void> {
+    await this.snapshotBeforeUpdate(`Pre-update: ${packageName}`);
     await this.installerHandler.updatePackage(packageName);
   }
 
@@ -379,11 +306,35 @@ export class CommandController {
   }
 
   async updateAllPackages(names: string[]): Promise<void> {
+    const lang = vscode.workspace
+      .getConfiguration('pythonPackageVisualizer')
+      .get<string>('language', 'en');
+    const label = names.length === 1
+      ? `Pre-update: ${names[0]}`
+      : lang === 'it'
+        ? `Pre-update: bulk (${names.length} pacchetti)`
+        : `Pre-update: bulk (${names.length} packages)`;
+    await this.snapshotBeforeUpdate(label);
     await this.installerHandler.updateAllPackages(names);
   }
 
   async installNewPackage(packageName: string, version?: string): Promise<void> {
     await this.installerHandler.installNewPackage(packageName, version);
+  }
+
+  async fixConflict(requirement: string, packageName: string): Promise<void> {
+    const spec = getConflictInstallSpec({
+      package: '',
+      version: '',
+      requirement,
+      conflictingPackage: packageName,
+      conflictingVersion: '',
+    });
+    if (!spec) {
+      return;
+    }
+    await this.snapshotBeforeUpdate(`Pre-fix: ${packageName}`);
+    await this.installerHandler.installPackageSpec(spec, packageName);
   }
 
   async exportReport(format: 'markdown' | 'json'): Promise<void> {
@@ -422,8 +373,12 @@ export class CommandController {
     await this.requirementsHandler.generateRequirements();
   }
 
-  async migrateToUv(): Promise<void> {
-    await this.migrationHandler.migrateToUv();
+  async migrateToUv(mode: 'manual' | 'automatic' = 'manual'): Promise<void> {
+    if (mode === 'automatic') {
+      await this.migrationHandler.migrateToUvAutomatic();
+      return;
+    }
+    await this.migrationHandler.migrateToUvManual();
   }
 
   async migrateToPoetry(): Promise<void> {
@@ -438,7 +393,30 @@ export class CommandController {
     }
   }
 
-  private async handleVenvHealthRequest(): Promise<void> {
+  /** Captures the current environment before a manual package update. */
+  private async snapshotBeforeUpdate(label: string): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root) {
+      return;
+    }
+
+    let packages: ScannedPackage[];
+    try {
+      packages = (await this.scanner.scanWorkspace(root)).packages;
+    } catch (err) {
+      this.logger.warn(`Pre-update scan failed, using cached packages: ${String(err)}`);
+      packages = this.lastPackages;
+    }
+
+    if (packages.length === 0) {
+      this.logger.warn('Pre-update snapshot skipped: no packages to save');
+      return;
+    }
+
+    await this.snapshotHandler.takePreUpdateSnapshot(label, packages);
+  }
+
+  async handleVenvHealthRequest(): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root) { return; }
     try {
@@ -449,7 +427,7 @@ export class CommandController {
     }
   }
 
-  private async handleUpdatePip(): Promise<void> {
+  async handleUpdatePip(): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root) { return; }
     const { exec } = await import('child_process');

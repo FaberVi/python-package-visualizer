@@ -1,7 +1,7 @@
-import { ScannedPackage } from '../../../modules/packageScanner.js';
+import { ScannedPackage, sanitizeRequiresList } from '../../../modules/packageScanner.js';
 import { UnusedPackageInfo, UnusedConfidenceContext } from '../../../modules/importScanner.js';
 import { VersionCheckResult } from '../../../services/versionChecker.js';
-import type { PackageDisplayData, HistoryDisplayEntry } from '../../../ui/webviewPanel.js';
+import type { PackageDisplayData, HistoryDisplayEntry, GraphPackageInfo } from '../../../ui/webviewPanel.js';
 import type { VersionHistoryEntry } from '../../../services/versionHistoryCache.js';
 import type { VersionHistoryCache } from '../../../services/versionHistoryCache.js';
 import { getAlternatives } from '../../../data/alternativesMap.js';
@@ -98,7 +98,7 @@ export function buildDisplayData(
       homePage: result?.homePage ?? '',
       specifiedVersion: pkg.specifiedVersion,
       source: pkg.source,
-      requires: pkg.requires,
+      requires: sanitizeRequiresList(pkg.requires),
       isUsed,
       unusedConfidence,
       unusedReasons,
@@ -135,7 +135,7 @@ export function buildConfidenceContext(
   const groupMap = new Map<string, string>();
   for (const pkg of scanned) {
     const norm = normalize(pkg.name);
-    requiresMap.set(norm, pkg.requires ?? []);
+    requiresMap.set(norm, sanitizeRequiresList(pkg.requires));
     groupMap.set(norm, pkg.group ?? 'main');
   }
 
@@ -147,4 +147,20 @@ export function buildConfidenceContext(
   }
 
   return { requiresMap, downloadsMap, groupMap };
+}
+
+/**
+ * Builds minimal graph lookup entries for transitive installed packages.
+ *
+ * @param {ScannedPackage[]} transitive - Transitive packages from pip show BFS.
+ * @returns {GraphPackageInfo[]} Payload for webview graph rendering.
+ */
+export function buildGraphPackages(transitive: ScannedPackage[]): GraphPackageInfo[] {
+  return transitive.map(pkg => ({
+    name: pkg.name,
+    installedVersion: pkg.installedVersion,
+    requires: sanitizeRequiresList(pkg.requires),
+    status: pkg.installedVersion ? 'unknown' : 'not-installed',
+    vulnerabilities: [],
+  }));
 }

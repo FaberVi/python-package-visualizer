@@ -12,9 +12,10 @@ import * as vscode from 'vscode';
 import { Logger } from '../utils/logger.js';
 import type { VersionCheckResult } from '../services/versionChecker.js';
 import type { ScannedPackage, ConflictInfo } from '../modules/packageScanner.js';
+import { sanitizeRequiresList } from '../modules/packageScanner.js';
 import type { UnusedPackageInfo } from '../modules/importScanner.js';
 import { buildDisplayData, buildEnrichedDisplayData } from '../commands/handlers/visualizer/displayCompiler.js';
-import { compileWebviewHtml } from './webviewHtmlCompiler.js';
+import { compileWebviewHtml, getWebviewCacheBust } from './webviewHtmlCompiler.js';
 
 // Re-export types for backward compatibility with existing importers
 export type {
@@ -22,12 +23,14 @@ export type {
   WebviewMessage,
   ScanStats,
   PackageDisplayData,
+  GraphPackageInfo,
 } from './webviewTypes.js';
 
 import type {
   WebviewMessage,
   ScanStats,
   PackageDisplayData,
+  GraphPackageInfo,
   VenvHealthReport,
   DepFilesEmptyState,
 } from './webviewTypes.js';
@@ -44,19 +47,34 @@ export class WebviewPanel {
   private pendingMessage: {
     type: 'init' | 'update';
     packages: PackageDisplayData[];
+    graphPackages?: GraphPackageInfo[];
     scanStats?: ScanStats;
     language?: string;
     depFilesEmpty?: DepFilesEmptyState;
   } | undefined;
   private isReady = false;
+  private loadedHtmlVersion: string | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly logger: Logger
   ) {}
 
+  /** Whether the webview has sent its ready handshake and can receive postMessage. */
+  isWebviewReady(): boolean {
+    return this.isReady;
+  }
+
   /** Open or reveal the webview panel */
   show(): void {
+    const htmlVersion = getWebviewCacheBust(this.context.extensionUri);
+    if (this.panel && this.loadedHtmlVersion !== htmlVersion) {
+      this.logger.debug(
+        `Webview HTML version changed (${this.loadedHtmlVersion} → ${htmlVersion}), recreating panel`
+      );
+      this.dispose();
+    }
+
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.One);
       return;
@@ -75,9 +93,11 @@ export class WebviewPanel {
       }
     );
 
+    this.loadedHtmlVersion = htmlVersion;
     this.panel.webview.html = compileWebviewHtml(
       this.panel.webview,
-      this.context.extensionUri
+      this.context.extensionUri,
+      htmlVersion
     );
 
     // Forward inbound messages to registered handlers
@@ -110,6 +130,7 @@ export class WebviewPanel {
       () => {
         this.panel = undefined;
         this.isReady = false;
+        this.loadedHtmlVersion = undefined;
         this.pendingMessage = undefined;
         this.logger.debug('Webview panel disposed');
       },
@@ -130,7 +151,8 @@ export class WebviewPanel {
     unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
     scanStats?: ScanStats,
     enrich?: PackageEnrichment,
-    depFilesEmpty?: DepFilesEmptyState
+    depFilesEmpty?: DepFilesEmptyState,
+    graphPackages?: GraphPackageInfo[]
   ): void {
     if (!this.panel) {
       return;
@@ -139,7 +161,22 @@ export class WebviewPanel {
     const packages = enrich
       ? buildEnrichedDisplayData(scanned, checkResults, enrich.workspaceRoot, enrich.history, unusedPackages)
       : buildDisplayData(scanned, checkResults, unusedPackages);
-    const msg = { type: 'init' as const, packages, scanStats, language, depFilesEmpty };
+    const sanitizedPackages = packages.map(p => ({
+      ...p,
+      requires: sanitizeRequiresList(p.requires),
+    }));
+    const sanitizedGraph = graphPackages?.map(p => ({
+      ...p,
+      requires: sanitizeRequiresList(p.requires),
+    }));
+    const msg = {
+      type: 'init' as const,
+      packages: sanitizedPackages,
+      graphPackages: sanitizedGraph,
+      scanStats,
+      language,
+      depFilesEmpty,
+    };
     if (this.isReady) {
       void this.panel.webview.postMessage(msg);
     } else {
@@ -153,7 +190,8 @@ export class WebviewPanel {
     checkResults: VersionCheckResult[],
     unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
     scanStats?: ScanStats,
-    enrich?: PackageEnrichment
+    enrich?: PackageEnrichment,
+    graphPackages?: GraphPackageInfo[]
   ): void {
     if (!this.panel) {
       return;
@@ -162,7 +200,21 @@ export class WebviewPanel {
     const packages = enrich
       ? buildEnrichedDisplayData(scanned, checkResults, enrich.workspaceRoot, enrich.history, unusedPackages)
       : buildDisplayData(scanned, checkResults, unusedPackages);
-    const msg = { type: 'update' as const, packages, scanStats, language };
+    const sanitizedPackages = packages.map(p => ({
+      ...p,
+      requires: sanitizeRequiresList(p.requires),
+    }));
+    const sanitizedGraph = graphPackages?.map(p => ({
+      ...p,
+      requires: sanitizeRequiresList(p.requires),
+    }));
+    const msg = {
+      type: 'update' as const,
+      packages: sanitizedPackages,
+      graphPackages: sanitizedGraph,
+      scanStats,
+      language,
+    };
     if (this.isReady) {
       void this.panel.webview.postMessage(msg);
     } else {
@@ -237,5 +289,8 @@ export class WebviewPanel {
   dispose(): void {
     this.panel?.dispose();
     this.panel = undefined;
+    this.isReady = false;
+    this.loadedHtmlVersion = undefined;
+    this.pendingMessage = undefined;
   }
 }

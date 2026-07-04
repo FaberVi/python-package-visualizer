@@ -79,21 +79,34 @@ window.renderDashboard = function () {
   }
 
   const isManual = !!scanStats.manualRequirementsPath;
-  const reqPath = scanStats.manualRequirementsPath || window.t('dash.autoDetectedDesc');
+  const depPaths = isManual
+    ? [scanStats.manualRequirementsPath]
+    : (scanStats.detectedDepFilePaths || []);
+  const reqPathTitle = depPaths.length > 0 ? depPaths.join('\n') : window.t('dash.autoDetectedDesc');
+  const pathEllipsis = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;';
+  const reqPathHtml = depPaths.length === 0
+    ? `<span style="${pathEllipsis}display:block;">${window.esc(window.t('dash.autoDetectedDesc'))}</span>`
+    : depPaths.length === 1
+      ? `<span style="${pathEllipsis}display:block;font-family:var(--vscode-editor-font-family,monospace);font-size:12px;">${window.esc(depPaths[0])}</span>`
+      : `<div style="display:flex;flex-direction:column;gap:3px;max-height:72px;overflow-y:auto;min-width:0;">${
+          depPaths.map(p => `<span style="font-family:var(--vscode-editor-font-family,monospace);font-size:11px;${pathEllipsis}display:block;" title="${window.esc(p)}">${window.esc(p)}</span>`).join('')
+        }</div>`;
 
   const requirementsBannerHtml = `
     <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-      <div style="display:flex;align-items:center;gap:14px;min-width:0;flex:1;">
+      <div style="display:flex;align-items:center;gap:14px;min-width:0;flex:1;overflow:hidden;">
         <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;background:${isManual ? 'rgba(74,222,128,.18)' : 'rgba(96,165,250,.18)'};color:${isManual ? '#4ade80' : '#60a5fa'};flex-shrink:0;">
           ${isManual ? '&#x1F4DD;' : '&#x1F50D;'}
         </div>
-        <div style="min-width:0;flex:1;">
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--vscode-descriptionForeground);">${window.t('dash.depFileSource')}</div>
-          <div style="font-weight:600;font-size:13px;color:var(--vscode-foreground);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:8px;" title="${window.esc(reqPath)}">
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.esc(reqPath)}</span>
-            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;background:${isManual ? 'rgba(74,222,128,.18)' : 'rgba(96,165,250,.18)'};color:${isManual ? '#4ade80' : '#60a5fa'};border:1px solid ${isManual ? 'rgba(74,222,128,.35)' : 'rgba(96,165,250,.3)'};">
-              ${isManual ? window.t('dash.manualPath') : window.t('dash.autoDetected')}
+        <div style="min-width:0;flex:1;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--vscode-descriptionForeground);">${window.t('dash.depFileSource')}</div>
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;flex-shrink:0;background:${isManual ? 'rgba(74,222,128,.18)' : 'rgba(96,165,250,.18)'};color:${isManual ? '#4ade80' : '#60a5fa'};border:1px solid ${isManual ? 'rgba(74,222,128,.35)' : 'rgba(96,165,250,.3)'};">
+              ${isManual ? window.t('dash.manualPath') : window.t('dash.autoDetected')}${!isManual && depPaths.length > 1 ? ` (${depPaths.length})` : ''}
             </span>
+          </div>
+          <div style="font-weight:600;font-size:13px;color:var(--vscode-foreground);margin-top:4px;min-width:0;overflow:hidden;" title="${window.esc(reqPathTitle)}">
+            ${reqPathHtml}
           </div>
         </div>
       </div>

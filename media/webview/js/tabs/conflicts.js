@@ -72,17 +72,23 @@ window.renderConflicts = function () {
       p => p.name.toLowerCase().replace(/[-_.]+/g, '-') === c.package.toLowerCase().replace(/[-_.]+/g, '-')
     );
     let actionsHtml = '';
+    const fixBtn = window.conflictFixButtonHtml
+      ? window.conflictFixButtonHtml(c)
+      : '';
+    const extraParts = [];
+    if (fixBtn) {
+      extraParts.push(fixBtn);
+    }
     if (pkgInfo?.updateBlockedByConflict) {
-      const parts = [];
       if (pkgInfo.previousVersion) {
-        parts.push(`<button class="action-btn rollback-btn" data-name="${window.esc(pkgInfo.name)}" data-version="${window.esc(pkgInfo.previousVersion)}">${window.t('btn.revertPrevious')}</button>`);
+        extraParts.push(`<button class="action-btn rollback-btn" data-name="${window.esc(pkgInfo.name)}" data-version="${window.esc(pkgInfo.previousVersion)}">${window.t('btn.revertPrevious')}</button>`);
       }
       if (pkgInfo.latestVersion && pkgInfo.latestVersion !== 'unknown') {
-        parts.push(`<button class="action-btn force-update-btn" data-name="${window.esc(pkgInfo.name)}">${window.t('btn.forceUpdate')}</button>`);
+        extraParts.push(`<button class="action-btn force-update-btn" data-name="${window.esc(pkgInfo.name)}">${window.t('btn.forceUpdate')}</button>`);
       }
-      if (parts.length) {
-        actionsHtml = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${parts.join('')}</div>`;
-      }
+    }
+    if (extraParts.length) {
+      actionsHtml = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${extraParts.join('')}</div>`;
     }
 
     return `
@@ -128,8 +134,10 @@ window.renderConflicts = function () {
       const name = btn.dataset.name;
       const version = btn.dataset.version;
       if (name && version) {
-        btn.disabled = true;
-        window.vscode.postMessage({ type: 'rollbackPackage', name, version });
+        window.showVersionInstallConfirmDialog?.(name, version, () => {
+          btn.disabled = true;
+          window.vscode.postMessage({ type: 'rollbackPackage', name, version });
+        });
       }
     });
   });
@@ -145,6 +153,8 @@ window.renderConflicts = function () {
       });
     });
   });
+
+  window.wireConflictFixButtons?.(el);
 };
 
 /**

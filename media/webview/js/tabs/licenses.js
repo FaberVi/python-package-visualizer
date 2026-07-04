@@ -1,28 +1,24 @@
 /**
  * License Compliance View Renderer.
- * Groups active packages by their copyleft risk level to highlight license compliance concerns.
+ * Groups packages by license with risk classification, search and filters.
  */
 
-/**
- * Compiles and renders the License Compliance layout.
- * Groups active packages by their license compliance risk levels
- * (Low/Medium/High/Unknown copyleft check).
- * Exposes a clickable row per package to reveal its deep details.
- * 
- * @returns {void}
- */
+window._licFilters = window._licFilters || { risk: 'all', search: '' };
+
 window.renderLicenses = function () {
   const elViewLicenses = document.getElementById('view-licenses');
   if (!elViewLicenses) return;
 
+  const t = window.t || (k => k);
   const allPackages = window.allPackages || [];
+  const filters = window._licFilters;
+
   const riskMap = {
     low: ['mit', 'bsd-3-clause', 'bsd-2-clause', 'bsd', 'apache-2.0', 'apache 2.0', 'apache', 'isc', 'mpl-2.0', 'python-2.0', 'python software foundation license', 'psf'],
     medium: ['lgpl', 'epl', 'cddl', 'eclipse'],
     high: ['gpl', 'agpl', 'commercial', 'proprietary'],
   };
 
-  /** Classifies license string to color-code risk profiles */
   function classifyLicense(license) {
     if (!license || license === 'UNKNOWN' || /^see /i.test(license)) return 'unknown';
     const lower = String(license).toLowerCase();
@@ -34,7 +30,7 @@ window.renderLicenses = function () {
 
   const groups = {};
   for (const pkg of allPackages) {
-    const license = pkg.license || 'Unknown';
+    const license = pkg.license || t('lic.licenseUnknown');
     if (!groups[license]) {
       groups[license] = { risk: classifyLicense(license), packages: [] };
     }
@@ -42,82 +38,136 @@ window.renderLicenses = function () {
   }
 
   const riskColor = { low: '#4ade80', medium: '#fb923c', high: '#f87171', unknown: '#94a3b8' };
-  const riskLabel = { low: 'Low Risk', medium: 'Medium Risk', high: 'High Risk', unknown: 'Unknown' };
+  const riskLabel = {
+    low: t('lic.riskLow'),
+    medium: t('lic.riskMedium'),
+    high: t('lic.riskHigh'),
+    unknown: t('lic.riskUnknown'),
+  };
 
-  const totalCount = allPackages.length;
-  const lowCount = Object.values(groups).filter(g => g.risk === 'low').reduce((s, g) => s + g.packages.length, 0);
-  const medCount = Object.values(groups).filter(g => g.risk === 'medium').reduce((s, g) => s + g.packages.length, 0);
-  const highCount = Object.values(groups).filter(g => g.risk === 'high').reduce((s, g) => s + g.packages.length, 0);
-  const unkCount = Object.values(groups).filter(g => g.risk === 'unknown').reduce((s, g) => s + g.packages.length, 0);
+  const formatPackageCount = (n) => (
+    n === 1 ? t('lic.packageOne') : t('lic.packageMany').replace('{n}', String(n))
+  );
 
-  const sortedGroups = Object.entries(groups).sort((a, b) => {
-    const order = { high: 0, medium: 1, unknown: 2, low: 3 };
-    const diff = order[a[1].risk] - order[b[1].risk];
-    if (diff !== 0) return diff;
-    return b[1].packages.length - a[1].packages.length;
-  });
+  const searchLower = filters.search.trim().toLowerCase();
+  const matchesSearch = (pkg) => !searchLower || pkg.name.toLowerCase().includes(searchLower);
 
-  const summaryCards = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px;">
-      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:600;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">Total</div>
-        <div style="font-size:22px;font-weight:700;margin-top:4px;color:var(--vscode-foreground);">${totalCount}</div>
-      </div>
-      <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.3);border-top:3px solid #4ade80;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:600;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">Low Risk</div>
-        <div style="font-size:22px;font-weight:700;margin-top:4px;color:#4ade80;">${lowCount}</div>
-      </div>
-      <div style="background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.3);border-top:3px solid #fb923c;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:600;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">Medium</div>
-        <div style="font-size:22px;font-weight:700;margin-top:4px;color:#fb923c;">${medCount}</div>
-      </div>
-      <div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-top:3px solid #f87171;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:600;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">High Risk</div>
-        <div style="font-size:22px;font-weight:700;margin-top:4px;color:#f87171;">${highCount}</div>
-      </div>
-      <div style="background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.3);border-top:3px solid #94a3b8;border-radius:10px;padding:14px;text-align:center;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:600;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">Unknown</div>
-        <div style="font-size:22px;font-weight:700;margin-top:4px;color:#94a3b8;">${unkCount}</div>
-      </div>
-    </div>
-  `;
+  const counts = { all: allPackages.length, low: 0, medium: 0, high: 0, unknown: 0 };
+  for (const group of Object.values(groups)) {
+    counts[group.risk] += group.packages.length;
+  }
+
+  const sortedGroups = Object.entries(groups)
+    .filter(([, group]) => filters.risk === 'all' || group.risk === filters.risk)
+    .map(([license, group]) => {
+      const filteredPkgs = group.packages.filter(matchesSearch);
+      return [license, { ...group, packages: filteredPkgs }];
+    })
+    .filter(([, group]) => group.packages.length > 0)
+    .sort((a, b) => {
+      const order = { high: 0, medium: 1, unknown: 2, low: 3 };
+      const diff = order[a[1].risk] - order[b[1].risk];
+      if (diff !== 0) return diff;
+      return b[1].packages.length - a[1].packages.length;
+    });
+
+  const summaryCards = [
+    { key: 'all', label: t('lic.total'), count: counts.all, className: '' },
+    { key: 'low', label: t('lic.lowRisk'), count: counts.low, className: 'lic-summary-card--low', color: '#4ade80' },
+    { key: 'medium', label: t('lic.mediumRisk'), count: counts.medium, className: 'lic-summary-card--medium', color: '#fb923c' },
+    { key: 'high', label: t('lic.highRisk'), count: counts.high, className: 'lic-summary-card--high', color: '#f87171' },
+    { key: 'unknown', label: t('lic.unknownRisk'), count: counts.unknown, className: 'lic-summary-card--unknown', color: '#94a3b8' },
+  ];
+
+  // Fix medium count key
+  summaryCards[2].count = counts.medium;
+
+  const summaryHtml = summaryCards.map(card => `
+    <button type="button" class="lic-summary-card ${card.className} ${filters.risk === card.key ? 'active' : ''}" data-risk-filter="${card.key}">
+      <div class="lic-summary-label">${window.esc(card.label)}</div>
+      <div class="lic-summary-value" style="color:${card.color || 'var(--vscode-foreground)'};">${card.count}</div>
+    </button>
+  `).join('');
+
+  const filterPills = [
+    { key: 'all', label: t('lic.filterAll') },
+    { key: 'high', label: t('lic.riskHigh') },
+    { key: 'medium', label: t('lic.riskMedium') },
+    { key: 'low', label: t('lic.riskLow') },
+    { key: 'unknown', label: t('lic.riskUnknown') },
+  ].map(p => `
+    <button type="button" class="lic-filter-pill ${filters.risk === p.key ? 'active' : ''}" data-risk-filter="${p.key}">${window.esc(p.label)}</button>
+  `).join('');
 
   const groupsHtml = sortedGroups.map(([license, group]) => {
     const color = riskColor[group.risk];
     const label = riskLabel[group.risk];
     const pkgListHtml = group.packages.map(p => `
-      <div class="license-pkg-row" data-pkg="${window.esc(p.name)}" style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-top:1px solid color-mix(in srgb, var(--vscode-panel-border) 40%, transparent);cursor:pointer;">
-        <span style="font-weight:600;font-size:12px;color:var(--vscode-foreground);">${window.esc(p.name)}</span>
-        <span style="font-family:var(--vscode-editor-font-family,monospace);font-size:10px;color:var(--vscode-descriptionForeground);">${window.esc(p.installedVersion || '\u2014')}</span>
+      <div class="lic-pkg-row" data-pkg="${window.esc(p.name)}">
+        <span class="lic-pkg-name">${window.esc(p.name)}</span>
+        <span class="lic-pkg-version">${window.esc(p.installedVersion || '—')}</span>
       </div>
     `).join('');
     return `
-      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-left:3px solid ${color};border-radius:10px;margin-bottom:16px;overflow:hidden;">
-        <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div class="lic-group" style="border-left:3px solid ${color};">
+        <div class="lic-group-header">
           <div style="min-width:0;">
-            <div style="font-weight:700;font-size:14px;color:var(--vscode-foreground);word-break:break-word;">${window.esc(license)}</div>
-            <div style="font-size:10px;color:var(--vscode-descriptionForeground);margin-top:2px;">${group.packages.length} package${group.packages.length !== 1 ? 's' : ''}</div>
+            <div class="lic-group-name">${window.esc(license)}</div>
+            <div class="lic-group-meta">${window.esc(formatPackageCount(group.packages.length))}</div>
           </div>
-          <span style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:12px;background:${color}22;color:${color};border:1px solid ${color}55;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</span>
+          <span class="lic-risk-badge" style="background:${color}22;color:${color};border:1px solid ${color}55;">${window.esc(label)}</span>
         </div>
         ${pkgListHtml}
       </div>
     `;
   }).join('');
 
-  const emptyHtml = `<div style="text-align:center;padding:60px 20px;background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px dashed var(--vscode-panel-border);border-radius:10px;color:var(--vscode-descriptionForeground);">No license data available.</div>`;
+  const bodyContent = allPackages.length === 0
+    ? `<div class="lic-empty">${window.esc(t('lic.noData'))}</div>`
+    : sortedGroups.length === 0
+      ? `<div class="lic-no-results">${window.esc(t('lic.noResults'))}</div>`
+      : groupsHtml;
 
   elViewLicenses.innerHTML = `
-    <div style="max-width:1000px;margin:0 auto;padding:24px;width:100%;box-sizing:border-box;">
-      <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);margin-bottom:4px;">${window.t('tab.licenses')}</div>
-      <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:24px;">${window.t('lic.subtitle')}</div>
-      ${summaryCards}
-      ${sortedGroups.length ? groupsHtml : emptyHtml}
+    <div class="lic-page">
+      <div class="lic-header-title">${window.esc(t('lic.title'))}</div>
+      <div class="lic-header-subtitle">${window.esc(t('lic.subtitle'))}</div>
+      <div class="lic-hint">
+        <span class="lic-hint-icon">ℹ️</span>
+        <span>${window.esc(t('lic.riskHint'))}</span>
+      </div>
+      <div class="lic-summary">${summaryHtml}</div>
+      <div class="lic-toolbar">
+        <input type="search" class="lic-search" id="lic-search-input" placeholder="${window.esc(t('lic.searchPlaceholder'))}" value="${window.esc(filters.search)}" />
+        <div class="lic-filter-pills">${filterPills}</div>
+      </div>
+      ${bodyContent}
     </div>
   `;
 
-  // Click package row → open detail panel
-  elViewLicenses.querySelectorAll('.license-pkg-row').forEach(row => {
+  const applyRiskFilter = (risk) => {
+    window._licFilters.risk = risk;
+    window.renderLicenses();
+  };
+
+  elViewLicenses.querySelectorAll('[data-risk-filter]').forEach(btn => {
+    btn.addEventListener('click', () => applyRiskFilter(btn.dataset.riskFilter));
+  });
+
+  const searchInput = elViewLicenses.querySelector('#lic-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      window._licFilters.search = searchInput.value;
+      window.renderLicenses();
+      const next = elViewLicenses.querySelector('#lic-search-input');
+      if (next) {
+        next.focus();
+        next.setSelectionRange(next.value.length, next.value.length);
+      }
+    });
+  }
+
+  elViewLicenses.querySelectorAll('.lic-pkg-row').forEach(row => {
     row.addEventListener('click', () => {
       const pkg = allPackages.find(p => p.name === row.dataset.pkg);
       if (pkg && typeof window.showDetail === 'function') window.showDetail(pkg);

@@ -1,10 +1,10 @@
 {
   "name": "python-package-visualizer",
-  "displayName": "Python Package Visualizer",
-  "description": "A VS Code extension to visualize, manage and audit Python workspace dependencies - with version checks, CVE badges, unused package detection, dependency graph, and one-click updates.",
-  "version": "3.1.1",
+  "displayName": "Python Package Visualizer (Community)",
+  "description": "Community-maintained fork to visualize, manage and audit Python workspace dependencies — version checks, CVE badges, unused package detection, dependency graph, uv migration, and one-click updates.",
+  "version": "3.2.0",
   "icon": "media/icon.png",
-  "publisher": "Elanchezhiyan-P",
+  "publisher": "FaberVi",
   "license": "MIT",
   "engines": {
     "vscode": "^1.105.0"
@@ -23,13 +23,16 @@
     "visualizer"
   ],
   "author": {
-    "name": "Elanchezhiyan P",
-    "url": "https://codebyelan.in"
+    "name": "Vincenzo Fabiano",
+    "url": "https://github.com/FaberVi"
   },
-  "homepage": "https://codebyelan.in",
+  "homepage": "https://github.com/FaberVi/python-package-visualizer",
+  "bugs": {
+    "url": "https://github.com/FaberVi/python-package-visualizer/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Elanchezhiyan-P/python-package-visualizer"
+    "url": "https://github.com/FaberVi/python-package-visualizer"
   },
   "activationEvents": [
     "onLanguage:python",

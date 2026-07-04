@@ -20,6 +20,43 @@ export class SnapshotHandler {
   ) {}
 
   /**
+   * Saves a backup snapshot before package updates without prompting the user.
+   */
+  async takePreUpdateSnapshot(label: string, packages: ScannedPackage[]): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root) {
+      return;
+    }
+
+    const name = `${label} @ ${new Date().toLocaleString()}`;
+    const lang = vscode.workspace
+      .getConfiguration('pythonPackageVisualizer')
+      .get<string>('language', 'en');
+    const isIt = lang === 'it';
+
+    try {
+      this.snapshots.takeSnapshot(root, name, packages);
+      void this.panel.webview?.postMessage({
+        type: 'snapshots',
+        snapshots: this.snapshots.listSnapshots(root)
+      });
+      this.logger.info(`Pre-update snapshot "${name}" saved`);
+
+      const message = isIt
+        ? 'Python Packages: Snapshot di backup creato prima dell\'aggiornamento ✅'
+        : 'Python Packages: Backup snapshot saved before update ✅';
+      void vscode.window.showInformationMessage(message);
+    } catch (err) {
+      this.logger.error(`Failed to take pre-update snapshot: ${String(err)}`);
+      void vscode.window.showWarningMessage(
+        isIt
+          ? 'Python Packages: Impossibile salvare lo snapshot di backup. L\'aggiornamento continuerà.'
+          : 'Python Packages: Could not save backup snapshot. Update will continue.'
+      );
+    }
+  }
+
+  /**
    * Captures the currently installed package versions and persists them
    * in the snapshot history.
    */

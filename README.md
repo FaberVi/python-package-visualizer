@@ -1,10 +1,10 @@
 <div align="center">
 
-# 📦 Python Package Visualizer
+# 📦 Python Package Visualizer (Community)
 
-**The ultimate dependency manager for Python projects in VS Code & Cursor**
+**Community-maintained fork — dependency manager for Python projects in VS Code & Cursor**
 
-![Version](https://img.shields.io/badge/version-3.1.1-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.2.0-blue?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![VS Code](https://img.shields.io/badge/vscode-%5E1.105.0-007ACC?style=flat-square&logo=visualstudiocode)
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python)
@@ -182,7 +182,14 @@ Inside the Package Visualizer panel:
 
 ---
 
-## 🎯 What's New in v3.1.1
+## 🎯 What's New in v3.2.0
+
+- 🏷️ **Independent community release** — published under `FaberVi` (separate from the original marketplace extension)
+- 🛠️ **Tools menu** — export, generate, and uv/Poetry migration in one dropdown
+- ⚡ **uv migration (manual/automatic)** — optional cleanup of legacy `requirements*.txt` files
+- 📦 **Updated branding** — extension icon aligned with the in-app package tile
+
+### v3.1.x highlights
 
 - 🔍 **Robust dependency file discovery** — scans subfolders (e.g. `backend/requirements.txt` in monorepos)
 - 🔗 **`requirements-dev.txt` support** — follows `-r requirements.txt` includes and merges packages correctly
@@ -223,20 +230,24 @@ You can also pick a requirements file manually from the dashboard or the in-pane
 
 ## 🔧 Installation
 
+> **Extension ID:** `FaberVi.python-package-visualizer`  
+> This is a **community fork**, independent from `Elanchezhiyan-P.python-package-visualizer`.  
+> If you had the original installed, disable or uninstall it to avoid duplicate sidebars.
+
 ### From VS Code Marketplace
-1. Open VS Code
+1. Open VS Code or Cursor
 2. Go to **Extensions** (`Ctrl+Shift+X`)
-3. Search **Python Package Visualizer**
-4. Click **Install**
+3. Search **Python Package Visualizer (Community)**
+4. Install the extension published by **FaberVi**
 
 ### From VSIX (VS Code or Cursor)
 
 ```bash
 # VS Code
-code --install-extension python-package-visualizer-3.1.1.vsix
+code --install-extension python-package-visualizer-3.2.0.vsix
 
 # Cursor
-cursor --install-extension python-package-visualizer-3.1.1.vsix
+cursor --install-extension python-package-visualizer-3.2.0.vsix --force
 ```
 
 Or run the full pipeline from the project root:
@@ -259,7 +270,7 @@ Or run the full pipeline from the project root:
 
 ```bash
 # Clone the repository (fork with active development)
-git clone https://github.com/D3m0n92/python-package-visualizer.git
+git clone https://github.com/FaberVi/python-package-visualizer.git
 cd python-package-visualizer
 
 # Install dependencies
@@ -419,7 +430,7 @@ python-package-visualizer/
 
 Issues and pull requests are welcome!
 
-- 🐛 **Bug reports & features:** [D3m0n92/python-package-visualizer — Issues](https://github.com/D3m0n92/python-package-visualizer/issues)
+- 🐛 **Bug reports & features:** [FaberVi/python-package-visualizer — Issues](https://github.com/FaberVi/python-package-visualizer/issues)
 - 🔼 **Upstream:** [Elanchezhiyan-P/python-package-visualizer](https://github.com/Elanchezhiyan-P/python-package-visualizer)
 
 > **Before submitting a PR**, run `.\scripts\build-all.ps1` and make sure all 5 steps pass cleanly.
@@ -431,13 +442,13 @@ Issues and pull requests are welcome!
 | | |
 |---|---|
 | **Original author** | **Elanchezhiyan P** — [codebyelan.in](https://codebyelan.in) · [GitHub](https://github.com/Elanchezhiyan-P) |
-| **Fork maintainer** | **Vincenzo Fabiano** — active development & Cursor integration · [GitHub @D3m0n92](https://github.com/D3m0n92) · [fork](https://github.com/D3m0n92/python-package-visualizer) |
+| **Fork maintainer** | **Vincenzo Fabiano** — active development & Cursor integration · [GitHub @FaberVi](https://github.com/FaberVi) · [fork](https://github.com/FaberVi/python-package-visualizer) |
 
 ---
 
 ## 📜 License
 
-MIT © [Elanchezhiyan P](https://codebyelan.in) and contributors. See [LICENSE](LICENSE) for details.
+MIT © [Vincenzo Fabiano](https://github.com/FaberVi) (fork maintainer), [Elanchezhiyan P](https://codebyelan.in) (original author), and contributors. See [LICENSE](LICENSE) for details.
 
 ---
 

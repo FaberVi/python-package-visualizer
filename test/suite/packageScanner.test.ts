@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { PackageScanner } from '../../src/modules/packageScanner.js';
+import { PackageScanner, sanitizeRequiresList } from '../../src/modules/packageScanner.js';
 
 // Minimal logger stub
 const stubLogger = {
@@ -172,10 +172,127 @@ suite('PackageScanner', () => {
 
   // ── normalizeName ─────────────────────────────────────────────────────
 
+  test('isPythonInWorkspaceVenv detects python inside workspace .venv', () => {
+    const venvPython = path.join(tmpDir, '.venv', 'Scripts', 'python.exe');
+    fs.mkdirSync(path.dirname(venvPython), { recursive: true });
+    fs.writeFileSync(venvPython, '');
+
+    assert.strictEqual(scanner.isPythonInWorkspaceVenv(venvPython, tmpDir), true);
+  });
+
+  test('expandConfigPath resolves ${workspaceFolder} for pythonPath override', () => {
+    const expand = (scanner as unknown as {
+      expandConfigPath: (configPath: string, root?: string) => string;
+    }).expandConfigPath;
+
+    const expanded = expand('${workspaceFolder}/.venv/Scripts/python.exe', tmpDir);
+    assert.strictEqual(
+      expanded,
+      path.join(tmpDir, '.venv', 'Scripts', 'python.exe')
+    );
+    assert.strictEqual(scanner.isPythonInWorkspaceVenv(expanded, tmpDir), true);
+  });
+
+  test('isPythonInWorkspaceVenv rejects unexpanded ${workspaceFolder} paths', () => {
+    const venvPython = path.join(tmpDir, '.venv', 'Scripts', 'python.exe');
+    fs.mkdirSync(path.dirname(venvPython), { recursive: true });
+    fs.writeFileSync(venvPython, '');
+
+    assert.strictEqual(
+      scanner.isPythonInWorkspaceVenv('${workspaceFolder}/.venv/Scripts/python.exe', tmpDir),
+      false
+    );
+  });
+
   test('normalizes package names (PEP 503)', () => {
     assert.strictEqual(scanner.normalizeName('Requests'), 'requests');
     assert.strictEqual(scanner.normalizeName('my_package'), 'my-package');
     assert.strictEqual(scanner.normalizeName('My.Package'), 'my-package');
     assert.strictEqual(scanner.normalizeName('MY--PACKAGE'), 'my-package');
+  });
+
+  test('parsePipShowOutput splits pip show blocks and normalizes requires', () => {
+    const stdout = [
+      'Name: Flask',
+      'Version: 3.0.0',
+      'Requires: Werkzeug, Jinja2, click',
+      '---',
+      'Name: scikit-learn',
+      'Version: 1.4.0',
+      'Requires: numpy, scipy, joblib',
+      '---',
+      'Name: empty-reqs',
+      'Version: 1.0.0',
+      'Requires:',
+    ].join('\n');
+
+    const map = scanner.parsePipShowOutput(stdout);
+
+    assert.strictEqual(map.size, 3);
+    assert.deepStrictEqual(map.get('flask')?.requires, ['werkzeug', 'jinja2', 'click']);
+    assert.deepStrictEqual(map.get('scikit-learn')?.requires, ['numpy', 'scipy', 'joblib']);
+    assert.deepStrictEqual(map.get('empty-reqs')?.requires, []);
+  });
+
+  test('parsePipShowOutput ignores Required-by reverse dependency metadata', () => {
+    const stdout = [
+      'Name: psycopg2-binary',
+      'Version: 2.9.12',
+      'Requires:',
+      'Required-by: django, flask',
+      '---',
+      'Name: pyjwt',
+      'Version: 2.13.0',
+      'Requires:',
+      'Required-by: flask',
+    ].join('\n');
+
+    const map = scanner.parsePipShowOutput(stdout);
+
+    assert.deepStrictEqual(map.get('psycopg2-binary')?.requires, []);
+    assert.deepStrictEqual(map.get('pyjwt')?.requires, []);
+  });
+
+  test('parsePipShowOutput rejects Required-by accidentally merged on Requires line', () => {
+    const stdout = [
+      'Name: broken',
+      'Requires: Required-by: django',
+      '---',
+      'Name: mixed',
+      'Requires: foo, Required-by: bar',
+    ].join('\n');
+
+    const map = scanner.parsePipShowOutput(stdout);
+
+    assert.deepStrictEqual(map.get('broken')?.requires, []);
+    assert.deepStrictEqual(map.get('mixed')?.requires, ['foo']);
+  });
+
+  test('sanitizeRequiresList strips required-by metadata tokens', () => {
+    assert.deepStrictEqual(
+      sanitizeRequiresList(['requests', 'required-by:', 'Required-by: django', 'flask']),
+      ['requests', 'flask']
+    );
+    assert.deepStrictEqual(sanitizeRequiresList(['required-by: mcp']), []);
+    assert.deepStrictEqual(sanitizeRequiresList(['Required-by: ']), []);
+  });
+
+  test('parsePipShowOutput handles Windows pip show with empty Requires and Required-by', () => {
+    const stdout = [
+      'Name: isort',
+      'Version: 8.0.1',
+      'Requires: ',
+      'Required-by: ',
+      '---',
+      'Name: pyjwt',
+      'Version: 2.13.0',
+      'Requires: ',
+      'Required-by: mcp',
+    ].join('\r\n');
+
+    const map = scanner.parsePipShowOutput(stdout);
+
+    assert.deepStrictEqual(map.get('isort')?.requires, []);
+    assert.deepStrictEqual(map.get('pyjwt')?.requires, []);
   });
 });

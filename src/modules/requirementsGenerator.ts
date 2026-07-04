@@ -12,7 +12,7 @@ export class RequirementsGenerator {
 
   async generate(workspaceRoot: string): Promise<string> {
     const importResult = await this.importScanner.scanImports(workspaceRoot);
-    const installed = await this.packageScanner.scanWorkspace(workspaceRoot);
+    const installed = (await this.packageScanner.scanWorkspace(workspaceRoot)).packages;
     const installedMap = new Map(installed.map(p => [p.name.toLowerCase(), p.installedVersion]));
 
     // Map imports to package names

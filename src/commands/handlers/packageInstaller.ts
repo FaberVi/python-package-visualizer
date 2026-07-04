@@ -7,6 +7,7 @@ import { PackageScanner } from '../../modules/packageScanner.js';
 import { VersionHistoryCache } from '../../services/versionHistoryCache.js';
 import { RequirementsSync } from '../../modules/requirementsSync.js';
 import { WebviewPanel } from '../../ui/webviewPanel.js';
+import { withUvGlobalArgs } from '../../utils/uvSpawn.js';
 
 /**
  * Handles package installation, rollback, bulk upgrade, and execution tracking
@@ -22,6 +23,53 @@ export class PackageInstaller {
     private readonly getWorkspaceRoot: () => string | null,
     private readonly refreshCallback: () => Promise<void>
   ) {}
+
+  /**
+   * Installs a pip package spec (e.g. "contourpy>=1.0.1") to resolve dependency conflicts.
+   */
+  async installPackageSpec(spec: string, packageName: string): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root || !spec.trim()) {
+      return;
+    }
+    if (!(await this.confirmInstallTarget(root))) {
+      return;
+    }
+
+    const { exe, args } = await this.buildInstallSpawnArgs([spec], root);
+    this.logger.info(`Installing conflict fix: ${exe} ${args.join(' ')}`);
+
+    try {
+      await this.runInstallTracked(exe, args, root, packageName);
+
+      const scanned = (await this.scanner.scanWorkspace(root)).packages;
+      const pkg = scanned.find(p => p.name === packageName);
+      if (pkg?.installedVersion) {
+        this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install');
+        const syncResult = await this.reqSync.syncVersionWithFallback(
+          root,
+          packageName,
+          pkg.installedVersion,
+          pkg.source
+        );
+        if (syncResult.outcome !== 'synced') {
+          this.logger.warn(`Post-fix sync skipped for ${packageName}: ${syncResult.outcome}`);
+        }
+      }
+
+      void vscode.window.showInformationMessage(
+        `Python Packages: ${packageName} updated to satisfy dependency requirement ✅`
+      );
+
+      await this.refreshCallback();
+    } catch (err) {
+      this.logger.error(`Conflict fix failed for ${packageName}: ${String(err)}`);
+      void vscode.window.showErrorMessage(
+        `Python Packages: Failed to install ${spec}. See Output panel for details.`
+      );
+      this.logger.show();
+    }
+  }
 
   /**
    * Spawns an upgrade command for a single package and synchronizes the pinned
@@ -43,7 +91,7 @@ export class PackageInstaller {
       await this.runInstallTracked(exe, args, root, packageName);
 
       // Record in history and sync requirements files
-      const scanned = await this.scanner.scanWorkspace(root);
+      const scanned = (await this.scanner.scanWorkspace(root)).packages;
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg?.installedVersion) {
         this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install');
@@ -100,7 +148,7 @@ export class PackageInstaller {
       this.history.recordVersion(root, packageName, finalVersion, 'pip-rollback');
 
       // Sync requirements file with new version
-      const scanned = await this.scanner.scanWorkspace(root);
+      const scanned = (await this.scanner.scanWorkspace(root)).packages;
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg) {
         const syncResult = await this.reqSync.syncVersionWithFallback(root, packageName, finalVersion, pkg.source);
@@ -156,7 +204,7 @@ export class PackageInstaller {
             const { exe, args } = await this.buildInstallSpawnArgs([name, '--upgrade'], root);
             await this.runInstallTracked(exe, args, root, name);
 
-            const scanned = await this.scanner.scanWorkspace(root);
+            const scanned = (await this.scanner.scanWorkspace(root)).packages;
             const pkg = scanned.find(p => p.name === name);
             if (pkg?.installedVersion) {
               const syncResult = await this.reqSync.syncVersionWithFallback(
@@ -180,7 +228,7 @@ export class PackageInstaller {
     );
 
     // Reconcile any pins still out of sync (wrong source file, pruned includes, etc.)
-    const finalScan = await this.scanner.scanWorkspace(root);
+    const finalScan = (await this.scanner.scanWorkspace(root)).packages;
     for (const pkg of finalScan) {
       if (
         pkg.installedVersion &&
@@ -290,7 +338,7 @@ export class PackageInstaller {
   async buildInstallCmd(packageSpec: string, root: string): Promise<string> {
     const uvPath = await this.scanner.resolveUvPath(root);
     if (uvPath) {
-      return `uv pip install ${packageSpec}`;
+      return `uv --system-certs pip install ${packageSpec}`;
     }
     const python = this.scanner.resolvePythonPath();
     return `"${python}" -m pip install ${packageSpec}`;
@@ -302,7 +350,7 @@ export class PackageInstaller {
   async buildInstallSpawnArgs(packageArgs: string[], root: string): Promise<{ exe: string; args: string[] }> {
     const uvPath = await this.scanner.resolveUvPath(root);
     if (uvPath) {
-      return { exe: uvPath, args: ['pip', 'install', ...packageArgs] };
+      return { exe: uvPath, args: withUvGlobalArgs(['pip', 'install', ...packageArgs]) };
     }
     const python = this.scanner.resolvePythonPath();
     return { exe: python, args: ['-m', 'pip', 'install', ...packageArgs] };

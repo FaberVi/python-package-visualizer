@@ -22,6 +22,7 @@ export type WebviewMessage =
   | { type: 'updatePackage'; name: string }
   | { type: 'forceUpdatePackage'; name: string }
   | { type: 'updateAllPackages'; names: string[] }
+  | { type: 'fixConflict'; requirement: string; packageName: string }
   | { type: 'rollbackPackage'; name: string; version: string }
   | { type: 'refresh' }
   | { type: 'openUrl'; url: string }
@@ -39,7 +40,7 @@ export type WebviewMessage =
   | { type: 'deleteSnapshot'; id: string }
   | { type: 'listSnapshots' }
   | { type: 'generateRequirements' }
-  | { type: 'migrateToUv' }
+  | { type: 'migrateToUv'; mode: 'manual' | 'automatic' }
   | { type: 'migrateToPoetry' }
   | { type: 'selectManualRequirements' }
   | { type: 'clearManualRequirements' }
@@ -60,6 +61,8 @@ export interface ScanStats {
   maintainerActivityScore?: number;
   slowestPackages?: Array<{name: string; time: number}>;
   manualRequirementsPath?: string;
+  /** Absolute paths of dependency files discovered by the internal scanner. */
+  detectedDepFilePaths?: string[];
 }
 
 /** Shown in the webview when no dependency files are auto-detected. */
@@ -104,4 +107,15 @@ export interface PackageDisplayData {
   unusedReasons?: string[];
   /** Set when config/script reference search found usage outside imports */
   referenceUsageFound?: boolean;
+}
+
+/** Minimal package payload for dependency graph lookup (transitive installed packages). */
+export interface GraphPackageInfo {
+  name: string;
+  installedVersion: string;
+  requires: string[];
+  status: string;
+  vulnerabilities?: VulnerabilityInfo[];
+  hasConflict?: boolean;
+  updateBlockedByConflict?: boolean;
 }
