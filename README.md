@@ -230,7 +230,7 @@ You can also pick a requirements file manually from the dashboard or the in-pane
 
 ## 🔧 Installation
 
-> **Extension ID:** `FaberVi.python-package-visualizer`  
+> **Extension ID:** `FaberVi.python-package-visualizer-community`  
 > This is a **community fork**, independent from `Elanchezhiyan-P.python-package-visualizer`.  
 > If you had the original installed, disable or uninstall it to avoid duplicate sidebars.
 
@@ -244,10 +244,10 @@ You can also pick a requirements file manually from the dashboard or the in-pane
 
 ```bash
 # VS Code
-code --install-extension python-package-visualizer-3.2.0.vsix
+code --install-extension python-package-visualizer-community-3.2.0.vsix
 
 # Cursor
-cursor --install-extension python-package-visualizer-3.2.0.vsix --force
+cursor --install-extension python-package-visualizer-community-3.2.0.vsix --force
 ```
 
 Or run the full pipeline from the project root:
@@ -466,7 +466,11 @@ All media is stored in `media/screenshots/`. Current assets:
 | `dependency-graph.png` | PNG | Demo section — Dependency Graph |
 | `settings-panel.png` | PNG | Settings Panel section |
 
-**Recommended tools for recording new GIFs:**
-- 🎞️ [ScreenToGif](https://www.screentogif.com/) *(Windows, free)*
-- 🎞️ [Kap](https://getkap.co/) *(macOS, free)*
-- 🎞️ [LICEcap](https://www.cockos.com/licecap/) *(cross-platform, free)*
+**Regenerate all README screenshots** (uses the real webview UI + demo fixture data, captured via headless Chrome/Edge):
+
+```powershell
+npm run screenshots
+# or: python scripts/screenshots/capture.py
+```
+
+Requires **Node.js**, **Python 3 + Pillow**, and **Chrome or Edge** installed locally.

@@ -1,6 +1,5 @@
 import * as cp from 'child_process';
 import { withUvGlobalArgs } from '../../utils/uvSpawn.js';
-import type { Logger } from '../../utils/logger.js';
 import { normalizePackageName, type ConflictInfo, type ScannedPackage } from './types.js';
 
 export function detectConflicts(

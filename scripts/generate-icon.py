@@ -59,7 +59,7 @@ def load_emoji_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 
 def main() -> None:
-    canvas = Image.new("RGBA", (SIZE, SIZE), (255, 255, 255, 255))
+    canvas = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
 
     shadow = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle(
@@ -80,7 +80,7 @@ def main() -> None:
     draw.text((tx, ty), EMOJI, font=font, embedded_color=True)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    canvas.convert("RGB").save(OUT, format="PNG", optimize=True)
+    canvas.save(OUT, format="PNG", optimize=True)
     print(f"Wrote {OUT}")
 
 

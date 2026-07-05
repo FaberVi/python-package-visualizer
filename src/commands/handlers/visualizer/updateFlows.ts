@@ -6,7 +6,6 @@ import type { VersionChecker, VersionCheckResult } from '../../../services/versi
 import type { VersionHistoryCache } from '../../../services/versionHistoryCache.js';
 import type { WebviewPanel, PackageEnrichment } from '../../../ui/webviewPanel.js';
 import type { SidebarProvider } from '../../../ui/sidebarProvider.js';
-import type { StatusBarManager } from '../../../ui/statusBarManager.js';
 import type { GraphPackageInfo } from '../../../ui/webviewTypes.js';
 import {
   buildEnrichedDisplayData,

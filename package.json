@@ -1,5 +1,5 @@
 {
-  "name": "python-package-visualizer",
+  "name": "python-package-visualizer-community",
   "displayName": "Python Package Visualizer (Community)",
   "description": "Community-maintained fork to visualize, manage and audit Python workspace dependencies — version checks, CVE badges, unused package detection, dependency graph, uv migration, and one-click updates.",
   "version": "3.2.0",
@@ -245,7 +245,8 @@
     "pretest": "tsc -p tsconfig.test.json",
     "test": "node ./out-test/test/runTests.js",
     "lint": "eslint src",
-    "package": "vsce package"
+    "package": "vsce package",
+    "screenshots": "python scripts/screenshots/capture.py"
   },
   "dependencies": {
     "@iarna/toml": "^2.2.5"
