@@ -21,6 +21,7 @@ window.activeTab = 'list';
 window.sortCol = 'name';
 window.sortDir = 'asc';
 window.selectedPackages = new Set();
+window.selectedUnusedPackages = new Set();
 window.safeMode = true;
 window.vulnBannerDismissed = false;
 window.driftBannerDismissed = false;

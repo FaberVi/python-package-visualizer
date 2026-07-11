@@ -24,8 +24,8 @@ import {
 import { runCheckUpdates, runTriggerAutoCheck } from './visualizer/updateFlows.js';
 import type { PackageEnrichment } from '../../ui/webviewPanel.js';
 import { UsageReferenceSearch } from '../../modules/import/usageReferenceSearch.js';
+import { PypiTopLevelCache } from '../../modules/usageEvidence/pypiTopLevelCache.js';
 import type { PackageDisplayData, DepFilesEmptyState, GraphPackageInfo } from '../../ui/webviewTypes.js';
-import { normalizeName } from '../../modules/import/normalize.js';
 
 /**
  * Handles core workspace package scanning, update checks, auto checks,
@@ -37,9 +37,11 @@ export class VisualizerHandler {
   private lastCheckResults: VersionCheckResult[] = [];
   private lastImportedModules = new Set<string>();
   private lastFilesScanned = 0;
+  private lastUnusedPackages: Map<string, UnusedPackageInfo> | undefined;
   private scanGeneration = 0;
   private readonly importScanner: ImportScanner;
   private readonly referenceSearch = new UsageReferenceSearch();
+  private readonly pypiTopLevelCache: PypiTopLevelCache;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -54,6 +56,7 @@ export class VisualizerHandler {
     private readonly statusBar?: StatusBarManager
   ) {
     this.importScanner = new ImportScanner(logger);
+    this.pypiTopLevelCache = new PypiTopLevelCache(context);
   }
 
   getLastPackages(): ScannedPackage[] {
@@ -83,7 +86,8 @@ export class VisualizerHandler {
       this.lastPackages,
       this.lastCheckResults,
       root,
-      this.history
+      this.history,
+      this.lastUnusedPackages
     );
     return {
       packages,
@@ -200,22 +204,35 @@ export class VisualizerHandler {
         }
       }
 
-      const unusedPackages = this.importScanner.getUnusedPackagesWithConfidence(
-        scanned.map(p => p.name),
-        mergedImportedModules,
-        buildConfidenceContext(scanned, checkResults)
+      const extraCandidates = new Map<string, Set<string>>();
+      await this.pypiTopLevelCache.enrichCandidates(scanned.map(p => p.name), extraCandidates);
+
+      const evidence = this.importScanner.evidenceEngine.collectEvidence(roots);
+      const confidenceContext = buildConfidenceContext(
+        scanned,
+        checkResults,
+        extraCandidates
       );
 
-      // Drop packages referenced in configs, Dockerfiles, CI scripts, etc.
-      const refHits = this.referenceSearch.search(root, [...unusedPackages.keys()]);
-      for (const pkg of [...unusedPackages.keys()]) {
-        if (refHits.has(normalizeName(pkg))) {
-          unusedPackages.delete(pkg);
-        }
-      }
+      const preliminaryUnused = this.importScanner.getUnusedPackagesWithConfidence(
+        scanned.map(p => p.name),
+        mergedImportedModules,
+        confidenceContext,
+        evidence
+      );
+
+      const refHits = this.referenceSearch.search(root, [...preliminaryUnused.keys()]);
+      const unusedPackages = this.importScanner.evidenceEngine.analyzeUnused(
+        scanned.map(p => p.name),
+        mergedImportedModules,
+        confidenceContext,
+        evidence,
+        refHits
+      );
 
       this.lastImportedModules = mergedImportedModules;
       this.lastFilesScanned = totalFilesScanned;
+      this.lastUnusedPackages = unusedPackages;
 
       this.logger.info(
         `Import scan: ${totalFilesScanned} files, ` +

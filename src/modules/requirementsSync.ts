@@ -2,6 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Logger } from '../utils/logger.js';
 import { discoverDepFiles } from './depFileDiscovery.js';
+import {
+  readDependencyFileContent,
+  writeDependencyFileContent,
+} from './parsers/utils.js';
 
 /** Result type for sync operations, distinguishing success/not-found/unsupported */
 export type SyncResult =
@@ -123,6 +127,56 @@ export class RequirementsSync {
     return primary;
   }
 
+  /**
+   * Removes a package entry, falling back to other dependency files when the
+   * primary source does not contain a matching line (e.g. -r includes, monorepo paths).
+   */
+  async removePackageWithFallback(
+    workspaceRoot: string,
+    packageName: string,
+    primarySource: string
+  ): Promise<SyncResult> {
+    const primary = await this.removePackage(workspaceRoot, packageName, primarySource);
+    if (primary.outcome === 'synced') {
+      return primary;
+    }
+
+    const tried = new Set<string>([
+      path.normalize(primarySource).replace(/\\/g, '/'),
+    ]);
+
+    const candidates = discoverDepFiles(workspaceRoot);
+    for (const absFile of candidates) {
+      const rel = path.relative(workspaceRoot, absFile).replace(/\\/g, '/');
+      if (tried.has(rel)) {
+        continue;
+      }
+      tried.add(rel);
+
+      const result = await this.removePackage(workspaceRoot, packageName, rel);
+      if (result.outcome === 'synced') {
+        this.logger.info(`[sync] fallback removed ${packageName} from ${rel}`);
+        return result;
+      }
+    }
+
+    for (const absFile of this.findIncludedRequirementFiles(workspaceRoot)) {
+      const rel = path.relative(workspaceRoot, absFile).replace(/\\/g, '/');
+      if (tried.has(rel)) {
+        continue;
+      }
+      tried.add(rel);
+
+      const result = await this.removePackage(workspaceRoot, packageName, rel);
+      if (result.outcome === 'synced') {
+        this.logger.info(`[sync] fallback removed ${packageName} from included file ${rel}`);
+        return result;
+      }
+    }
+
+    return primary;
+  }
+
   // ── TXT-based sync (requirements.txt, *.in) ────────────────────────────
 
   /**
@@ -130,13 +184,9 @@ export class RequirementsSync {
    */
   private removeFromTxt(filePath: string, packageName: string): SyncResult {
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const lines = content.split('\n');
-      const regex = this.buildNameRegex(packageName);
-      const fullRegex = new RegExp(
-        `^\\s*(${regex.source}(?:\\[.*?\\])?)\\s*([=!<>~^].*)?\\s*$`,
-        'i'
-      );
+      const { content, encoding } = readDependencyFileContent(filePath);
+      const lines = this.splitRequirementLines(content);
+      const fullRegex = this.buildRequirementLineRegex(packageName);
 
       const filtered = lines.filter(line => {
         const stripped = line.trim();
@@ -149,7 +199,7 @@ export class RequirementsSync {
         while (filtered.length > 0 && filtered[filtered.length - 1].trim() === '') {
           filtered.pop();
         }
-        fs.writeFileSync(filePath, filtered.join('\n') + '\n', 'utf-8');
+        writeDependencyFileContent(filePath, filtered.join('\n') + '\n', encoding);
         this.logger.info(`Removed ${packageName} from ${path.basename(filePath)}`);
         return { outcome: 'synced' };
       }
@@ -169,22 +219,11 @@ export class RequirementsSync {
     newVersion: string
   ): SyncResult {
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const lines = content.split('\n');
+      const { content, encoding } = readDependencyFileContent(filePath);
+      const lines = this.splitRequirementLines(content);
       let changed = false;
 
-      const nameRe = this.buildNameRegex(packageName);
-      const versionedRegex = new RegExp(
-        `^(${nameRe.source}(?:\\[.*?\\])?)\\s*([=!<>~^]+.*)$`,
-        'i'
-      );
-      const bareRegex = new RegExp(
-        `^(${nameRe.source}(?:\\[.*?\\])?)\\s*$`,
-        'i'
-      );
-
-      this.logger.info(`[sync] syncVersionInTxt: pattern="${versionedRegex.source}", lines=${lines.length}`);
-      // Log first few non-comment lines for diagnosis
+      this.logger.info(`[sync] syncVersionInTxt: pkg="${packageName}", lines=${lines.length}`);
       const sampleLines = lines.filter(l => l.trim() && !l.trim().startsWith('#')).slice(0, 5);
       this.logger.info(`[sync] file sample: ${JSON.stringify(sampleLines)}`);
 
@@ -192,22 +231,16 @@ export class RequirementsSync {
         const stripped = line.trim();
         if (stripped.startsWith('#') || stripped === '') { return line; }
 
-        const match = stripped.match(versionedRegex);
-        if (match) {
+        const rewritten = this.rewriteTxtRequirementVersion(stripped, packageName, newVersion);
+        if (rewritten !== null) {
           changed = true;
-          const extras = match[1].includes('[') ? match[1].slice(match[1].indexOf('[')) : '';
-          return `${packageName}${extras}==${newVersion}`;
-        }
-        // Also match bare package name with no version specifier
-        if (stripped.match(bareRegex)) {
-          changed = true;
-          return `${packageName}==${newVersion}`;
+          return rewritten;
         }
         return line;
       });
 
       if (changed) {
-        fs.writeFileSync(filePath, updatedLines.join('\n'), 'utf-8');
+        writeDependencyFileContent(filePath, updatedLines.join('\n'), encoding);
         this.logger.info(`Synced ${packageName}==${newVersion} in ${path.basename(filePath)}`);
         return { outcome: 'synced' };
       }
@@ -370,6 +403,78 @@ export class RequirementsSync {
   }
 
   /**
+   * Matches a requirements line that declares the given package, including
+   * PEP 508 direct references (`name @ git+...`) and bare names.
+   */
+  private buildRequirementLineRegex(packageName: string): RegExp {
+    const nameRe = this.buildNameRegex(packageName);
+    return new RegExp(
+      `^\\s*(${nameRe.source}(?:\\[.*?\\])?)\\s*(?:[@=!<>~^]|$)`,
+      'i'
+    );
+  }
+
+  /**
+   * Joins PEP 508 line continuations before matching, mirroring requirementsParser.
+   */
+  private splitRequirementLines(content: string): string[] {
+    const normalized = content.replace(/\\\r?\n\s*/g, ' ');
+    return normalized.split('\n');
+  }
+
+  /**
+   * Rewrites a single requirements line to pin the installed version,
+   * preserving environment markers and pip hash options.
+   */
+  private rewriteTxtRequirementVersion(
+    stripped: string,
+    packageName: string,
+    newVersion: string
+  ): string | null {
+    const nameRe = this.buildNameRegex(packageName);
+
+    const directRef = new RegExp(
+      `^(${nameRe.source}(?:\\[.*?\\])?)\\s*@\\s*.+$`,
+      'i'
+    );
+    const directMatch = stripped.match(directRef);
+    if (directMatch) {
+      const extras = directMatch[1].includes('[')
+        ? directMatch[1].slice(directMatch[1].indexOf('['))
+        : '';
+      return `${packageName}${extras}==${newVersion}`;
+    }
+
+    const versionedRegex = new RegExp(
+      `^(${nameRe.source}(?:\\[.*?\\])?)\\s*([=!<>~^][^\\s;]*)(.*)$`,
+      'i'
+    );
+    const versionedMatch = stripped.match(versionedRegex);
+    if (versionedMatch) {
+      const extras = versionedMatch[1].includes('[')
+        ? versionedMatch[1].slice(versionedMatch[1].indexOf('['))
+        : '';
+      const tail = versionedMatch[3] ?? '';
+      return `${packageName}${extras}==${newVersion}${tail}`;
+    }
+
+    const bareRegex = new RegExp(
+      `^(${nameRe.source}(?:\\[.*?\\])?)\\s*(;.*)?$`,
+      'i'
+    );
+    const bareMatch = stripped.match(bareRegex);
+    if (bareMatch) {
+      const extras = bareMatch[1].includes('[')
+        ? bareMatch[1].slice(bareMatch[1].indexOf('['))
+        : '';
+      const marker = bareMatch[2] ?? '';
+      return `${packageName}${extras}==${newVersion}${marker}`;
+    }
+
+    return null;
+  }
+
+  /**
    * Classifies a dependency file into a sync-strategy bucket.
    */
   private classifyFile(sourceFile: string): 'txt' | 'toml' | 'unsupported' {
@@ -402,7 +507,7 @@ export class RequirementsSync {
 
       let content: string;
       try {
-        content = fs.readFileSync(resolved, 'utf-8');
+        content = readDependencyFileContent(resolved).content;
       } catch {
         return;
       }

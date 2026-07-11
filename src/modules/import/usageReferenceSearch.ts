@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { isDependencyDeclarationFile } from '../depFileDiscovery.js';
 import { normalizeName } from './normalize.js';
 import { buildImportCandidates } from './packageMatcher.js';
 
@@ -116,7 +117,10 @@ export class UsageReferenceSearch {
           lowerName === 'dockerfile' ||
           lowerName.startsWith('dockerfile.')
         ) {
-          results.push(path.join(dir, entry.name));
+          const absPath = path.join(dir, entry.name);
+          if (!isDependencyDeclarationFile(absPath)) {
+            results.push(absPath);
+          }
         }
       }
     };

@@ -118,7 +118,7 @@ export class RequirementsHandler {
           continue;
         }
 
-        const result = await this.reqSync.syncVersion(root, p.name, installedVersion, p.source);
+        const result = await this.reqSync.syncVersionWithFallback(root, p.name, installedVersion, p.source);
         if (result.outcome === 'synced') {
           syncedCount++;
         } else if (result.outcome === 'unsupported') {
@@ -192,6 +192,38 @@ export class RequirementsHandler {
   }
 
   /**
+   * Removes multiple packages from dependency files without per-package prompts.
+   * Caller must confirm with the user before invoking.
+   */
+  async bulkRemovePackagesWithoutConfirm(
+    packages: Array<{ name: string; source: string }>
+  ): Promise<{ removed: number; failed: string[] }> {
+    const root = this.getWorkspaceRoot();
+    if (!root || packages.length === 0) {
+      return { removed: 0, failed: [] };
+    }
+
+    let removed = 0;
+    const failed: string[] = [];
+
+    for (const pkg of packages) {
+      try {
+        const result = await this.reqSync.removePackageWithFallback(root, pkg.name, pkg.source);
+        if (result.outcome === 'synced') {
+          removed++;
+        } else {
+          failed.push(pkg.name);
+        }
+      } catch {
+        failed.push(pkg.name);
+      }
+    }
+
+    await this.refreshCallback();
+    return { removed, failed };
+  }
+
+  /**
    * Prompts for confirmation and deletes a package declaration from the specified dependency file.
    */
   async removeFromRequirements(packageName: string, sourceFile: string): Promise<void> {
@@ -210,12 +242,13 @@ export class RequirementsHandler {
     }
 
     try {
-      const result = await this.reqSync.removePackage(root, packageName, sourceFile);
+      const result = await this.reqSync.removePackageWithFallback(root, packageName, sourceFile);
       this.showSyncOutcome(
         result,
         packageName,
         sourceFile,
-        `Removed "${packageName}" from ${sourceFile}.`
+        `Removed "${packageName}" from ${sourceFile}.`,
+        'remove'
       );
       if (result.outcome === 'synced') {
         await this.refreshCallback();
@@ -291,7 +324,8 @@ export class RequirementsHandler {
     result: SyncResult,
     packageName: string,
     sourceFile: string,
-    successMessage: string
+    successMessage: string,
+    action: 'sync' | 'remove' = 'sync'
   ): void {
     switch (result.outcome) {
       case 'synced':
@@ -299,7 +333,9 @@ export class RequirementsHandler {
         break;
       case 'not-found':
         void vscode.window.showWarningMessage(
-          `Could not find "${packageName}" in ${sourceFile} to sync.`
+          action === 'remove'
+            ? `Could not find "${packageName}" in ${sourceFile} to remove.`
+            : `Could not find "${packageName}" in ${sourceFile} to sync.`
         );
         break;
       case 'unsupported':

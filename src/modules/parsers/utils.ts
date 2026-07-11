@@ -1,3 +1,57 @@
+import * as fs from 'fs';
+
+export type DepFileEncoding = 'utf8' | 'utf16le';
+
+export interface DepFileContent {
+  content: string;
+  encoding: DepFileEncoding;
+}
+
+/**
+ * Reads a dependency manifest file, handling UTF-8/UTF-16 encodings common on Windows.
+ */
+export function readDependencyFileContent(filePath: string): DepFileContent {
+  const rawBuf = fs.readFileSync(filePath);
+  if (rawBuf[0] === 0xFF && rawBuf[1] === 0xFE) {
+    return {
+      content: rawBuf.toString('utf16le').replace(/^\uFEFF/, ''),
+      encoding: 'utf16le',
+    };
+  }
+  if (rawBuf[0] === 0xFE && rawBuf[1] === 0xFF) {
+    const swapped = Buffer.alloc(rawBuf.length);
+    for (let i = 0; i < rawBuf.length - 1; i += 2) {
+      swapped[i] = rawBuf[i + 1];
+      swapped[i + 1] = rawBuf[i];
+    }
+    return {
+      content: swapped.toString('utf16le').replace(/^\uFEFF/, ''),
+      encoding: 'utf16le',
+    };
+  }
+
+  let content = rawBuf.toString('utf-8').replace(/^\uFEFF/, '');
+  if (content.includes('\x00')) {
+    content = content.replace(/\x00/g, '');
+  }
+  return { content, encoding: 'utf8' };
+}
+
+/**
+ * Writes a dependency manifest file, preserving the original encoding when possible.
+ */
+export function writeDependencyFileContent(
+  filePath: string,
+  content: string,
+  encoding: DepFileEncoding
+): void {
+  if (encoding === 'utf16le') {
+    fs.writeFileSync(filePath, '\uFEFF' + content, 'utf16le');
+    return;
+  }
+  fs.writeFileSync(filePath, content, 'utf-8');
+}
+
 /**
  * Normalizes Python package names to ensure consistent comparisons.
  * Delimiter variation (dashes vs underscores vs dots) and case differences

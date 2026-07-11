@@ -145,4 +145,77 @@ suite('RequirementsSync', () => {
     const baseContent = fs.readFileSync(path.join(backendDir, 'requirements.txt'), 'utf-8');
     assert.ok(baseContent.includes('django==5.0.0'));
   });
+
+  test('removePackage matches PEP 508 direct URL references', async () => {
+    const reqPath = path.join(tmpDir, 'requirements.txt');
+    fs.writeFileSync(reqPath, 'djoser @ git+https://github.com/sunscrapers/djoser.git\nrequests>=2.0\n');
+
+    const result = await sync.removePackage(tmpDir, 'djoser', 'requirements.txt');
+
+    assert.strictEqual(result.outcome, 'synced');
+    const content = fs.readFileSync(reqPath, 'utf-8');
+    assert.ok(!content.includes('djoser'));
+    assert.ok(content.includes('requests'));
+  });
+
+  test('removePackage handles UTF-16 encoded requirements files', async () => {
+    const reqPath = path.join(tmpDir, 'requirements.txt');
+    fs.writeFileSync(reqPath, '\uFEFFdjoser==2.2.3\nrequests>=2.0\n', 'utf16le');
+
+    const result = await sync.removePackage(tmpDir, 'djoser', 'requirements.txt');
+
+    assert.strictEqual(result.outcome, 'synced');
+    const { readDependencyFileContent } = await import('../../src/modules/parsers/utils.js');
+    const content = readDependencyFileContent(reqPath).content;
+    assert.ok(!content.includes('djoser'));
+    assert.ok(content.includes('requests'));
+  });
+
+  test('removePackageWithFallback finds package in included requirements file', async () => {
+    const backendDir = path.join(tmpDir, 'backend');
+    fs.mkdirSync(backendDir, { recursive: true });
+    fs.writeFileSync(path.join(backendDir, 'requirements.txt'), 'djoser==2.2.3\n');
+    fs.writeFileSync(
+      path.join(backendDir, 'requirements-dev.txt'),
+      '-r requirements.txt\npytest\n'
+    );
+
+    const result = await sync.removePackageWithFallback(
+      tmpDir,
+      'djoser',
+      'backend/requirements-dev.txt'
+    );
+
+    assert.strictEqual(result.outcome, 'synced');
+    const baseContent = fs.readFileSync(path.join(backendDir, 'requirements.txt'), 'utf-8');
+    assert.ok(!baseContent.includes('djoser'));
+  });
+
+  test('syncVersion handles line continuations and hash options', async () => {
+    const reqPath = path.join(tmpDir, 'requirements.txt');
+    fs.writeFileSync(
+      reqPath,
+      'django==4.2.0 \\\n    --hash=sha256:abc123\nrequests>=2.0\n'
+    );
+
+    const result = await sync.syncVersion(tmpDir, 'django', '4.2.7', 'requirements.txt');
+
+    assert.strictEqual(result.outcome, 'synced');
+    const content = fs.readFileSync(reqPath, 'utf-8');
+    assert.ok(content.includes('django==4.2.7'));
+    assert.ok(content.includes('--hash=sha256:abc123'));
+    assert.ok(content.includes('requests>=2.0'));
+  });
+
+  test('syncVersion preserves environment markers', async () => {
+    const reqPath = path.join(tmpDir, 'requirements.txt');
+    fs.writeFileSync(reqPath, "django>=4.0; python_version>='3.10'\n");
+
+    const result = await sync.syncVersion(tmpDir, 'django', '5.0.0', 'requirements.txt');
+
+    assert.strictEqual(result.outcome, 'synced');
+    assert.ok(
+      fs.readFileSync(reqPath, 'utf-8').includes("django==5.0.0; python_version>='3.10'")
+    );
+  });
 });

@@ -89,6 +89,24 @@ suite('PackageMatcher', () => {
     assert.ok(used.has('python-dotenv'));
     assert.ok(used.has('pymupdf'));
   });
+
+  test('maps django ecosystem imports', () => {
+    assert.ok(resolveImportToPackageNames('corsheaders').has('django-cors-headers'));
+    assert.ok(resolveImportToPackageNames('localflavor.it').has('django-localflavor'));
+    assert.ok(resolveImportToPackageNames('phonenumber_field').has('django-phonenumber-field'));
+    assert.ok(resolveImportToPackageNames('rest_framework_simplejwt').has('djangorestframework-simplejwt'));
+  });
+
+  test('phonenumberslite alias resolves via phonenumbers import', () => {
+    const imports = new Set(['phonenumbers']);
+    assert.ok(isPackageUsed('phonenumberslite', imports));
+    assert.ok(isPackageUsed('phonenumbers', imports));
+  });
+
+  test('marks django-cors-headers used via corsheaders import', () => {
+    const imports = new Set(['corsheaders.middleware']);
+    assert.ok(isPackageUsed('django-cors-headers', imports));
+  });
 });
 
 suite('UnusedConfidenceAnalyzer', () => {

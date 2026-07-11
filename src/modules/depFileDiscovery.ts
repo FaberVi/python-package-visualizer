@@ -119,11 +119,36 @@ function collectDepFiles(
   }
 }
 
+const LOCK_FILES = new Set([
+  'poetry.lock',
+  'Pipfile.lock',
+  'uv.lock',
+  'pdm.lock',
+]);
+
 function isKnownDepFile(name: string): boolean {
   if ((DEP_FILE_PRIORITY as readonly string[]).includes(name)) {
     return true;
   }
   return name.endsWith('.in') && name.startsWith('requirements');
+}
+
+/** True when a file declares or locks Python dependencies (not usage in app code). */
+export function isDependencyDeclarationFile(filePath: string): boolean {
+  const base = path.basename(filePath);
+  if (isKnownDepFile(base) || LOCK_FILES.has(base)) {
+    return true;
+  }
+
+  const lower = base.toLowerCase();
+  if (lower.startsWith('constraints') && lower.endsWith('.txt')) {
+    return true;
+  }
+  if (lower.startsWith('requirements') && (lower.endsWith('.txt') || lower.endsWith('.in'))) {
+    return true;
+  }
+
+  return false;
 }
 
 /**

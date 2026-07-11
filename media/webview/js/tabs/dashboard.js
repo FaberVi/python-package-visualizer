@@ -19,20 +19,10 @@ window.renderDashboard = function () {
   const totalPkgs      = allPackages.length;
   const withVulns      = allPackages.filter(p => (p.vulnerabilities || []).length > 0).length;
   const securityScore  = totalPkgs > 0 ? Math.round(((totalPkgs - withVulns) / totalPkgs) * 100) : 100;
-  const totalDownloads = allPackages.reduce((s, p) => s + (p.weeklyDownloads || 0), 0);
-  const totalSizeMB    = allPackages.reduce((s, p) => s + (p.installSize || 0), 0) / (1024 * 1024);
-  const outdated       = allPackages.filter(p => p.status === 'update-available').length;
-
-  const fmtDl = (n) => {
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000)     return (n / 1000).toFixed(1) + 'K';
-    return String(n);
-  };
+  const outdated = allPackages.filter(p => p.status === 'update-available').length;
 
   const cards = [
     { color: '#60a5fa', icon: '&#x1F4E6;', label: window.t('dash.totalPackages'), val: totalPkgs, unit: outdated > 0 ? `${outdated} ${window.t('dash.outdated')}` : window.t('dash.allCurrent') },
-    { color: '#a78bfa', icon: '&#x1F4BE;', label: window.t('dash.totalSize'),     val: totalSizeMB.toFixed(1), unit: 'MB' },
-    { color: '#4ade80', icon: '&#x1F4CA;', label: window.t('dash.weeklyDownloads'), val: fmtDl(totalDownloads), unit: window.t('dash.perWeek') },
     { color: '#fb923c', icon: '&#x1F512;', label: window.t('dash.securityScore'), val: securityScore, unit: withVulns === 0 ? window.t('dash.safe') : `${withVulns} vulnerable` },
   ];
 

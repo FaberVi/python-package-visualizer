@@ -9,6 +9,7 @@ export interface MessageRouterDeps {
   fixConflict(requirement: string, packageName: string): Promise<void>;
   rollbackPackage(name: string, version: string): Promise<void>;
   updateAllPackages(names: string[]): Promise<void>;
+  installAllPackages(names: string[]): Promise<void>;
   installNewPackage(name: string, version?: string): Promise<void>;
   searchPypi(query: string): Promise<void>;
   exportReport(format: 'markdown' | 'json'): Promise<void>;
@@ -17,6 +18,7 @@ export interface MessageRouterDeps {
   createRequirementsFile(): Promise<void>;
   bulkSyncRequirementsToInstalled(packages: Array<{ name: string; source: string }>): Promise<void>;
   bulkRemoveFromRequirements(names: string[], sources: string[]): Promise<void>;
+  removeUnusedPackagesWithSnapshot(packages: Array<{ name: string; source: string }>): Promise<void>;
   takeSnapshot(name: string): void;
   restoreSnapshot(id: string): Promise<void>;
   deleteSnapshot(id: string): Promise<void>;
@@ -30,7 +32,7 @@ export interface MessageRouterDeps {
   syncRequirementsToInstalled(name: string, source: string): Promise<void>;
   handleVenvHealthRequest(): Promise<void>;
   handleUpdatePip(): Promise<void>;
-  analyzeUnusedWithCursor(packageNames?: string[]): Promise<void>;
+  analyzeUnusedWithCursor(packageNames?: string[], userInitiated?: boolean): Promise<void>;
 }
 
 export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage): void {
@@ -85,6 +87,9 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
     case 'bulkUpdate':
       void deps.updateAllPackages((msg as { type: string; names: string[] }).names);
       break;
+    case 'bulkInstall':
+      void deps.installAllPackages((msg as { type: string; names: string[] }).names);
+      break;
     case 'bulkSync':
       void deps.bulkSyncRequirementsToInstalled(
         (msg as { type: string; packages: Array<{ name: string; source: string }> }).packages
@@ -93,6 +98,18 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
     case 'bulkRemove': {
       const m = msg as { type: string; names: string[]; sources: string[] };
       void deps.bulkRemoveFromRequirements(m.names, m.sources);
+      break;
+    }
+    case 'bulkRemoveUnusedConfirmed': {
+      const m = msg as {
+        type: string;
+        userInitiated?: boolean;
+        packages: Array<{ name: string; source: string }>;
+      };
+      if (m.userInitiated !== true || !m.packages?.length) {
+        return;
+      }
+      void deps.removeUnusedPackagesWithSnapshot(m.packages);
       break;
     }
     case 'takeSnapshot':
@@ -139,8 +156,11 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
       void deps.handleUpdatePip();
       break;
     case 'cursorAnalyzeUnused': {
-      const m = msg as { type: string; packageNames?: string[] };
-      void deps.analyzeUnusedWithCursor(m.packageNames);
+      const m = msg as { type: string; packageNames?: string[]; userInitiated?: boolean };
+      if (m.userInitiated !== true) {
+        return;
+      }
+      void deps.analyzeUnusedWithCursor(m.packageNames, true);
       break;
     }
   }

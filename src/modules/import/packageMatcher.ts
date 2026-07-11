@@ -1,6 +1,7 @@
 import {
   IMPORT_TO_PACKAGE,
   NAMESPACE_PREFIXES,
+  PACKAGE_MODULE_ALIASES,
   STDLIB_MODULES,
 } from './maps.js';
 import { normalizeName, packageNameVariants } from './normalize.js';
@@ -91,6 +92,11 @@ export function buildImportCandidates(normalizedPkg: string): Set<string> {
     }
   }
 
+  for (const alias of PACKAGE_MODULE_ALIASES[normalizedPkg] ?? []) {
+    candidates.add(alias);
+    candidates.add(alias.replace(/-/g, '_'));
+  }
+
   return candidates;
 }
 
@@ -100,7 +106,8 @@ export function buildImportCandidates(normalizedPkg: string): Set<string> {
  */
 export function isPackageUsed(
   normalizedPkg: string,
-  importedModules: Set<string>
+  importedModules: Set<string>,
+  extraCandidates?: Set<string>
 ): boolean {
   const normalizedImports = new Set(
     [...importedModules].map(m => m.toLowerCase())
@@ -113,7 +120,21 @@ export function isPackageUsed(
     }
   }
 
+  // Shared top-level module (e.g. phonenumberslite ↔ phonenumbers)
+  for (const alias of PACKAGE_MODULE_ALIASES[normalizedPkg] ?? []) {
+    for (const variant of packageNameVariants(normalizeName(alias))) {
+      if (usedPackages.has(variant)) {
+        return true;
+      }
+    }
+  }
+
   const candidates = buildImportCandidates(normalizedPkg);
+  if (extraCandidates) {
+    for (const c of extraCandidates) {
+      candidates.add(c);
+    }
+  }
   for (const candidate of candidates) {
     if (normalizedImports.has(candidate)) {
       return true;

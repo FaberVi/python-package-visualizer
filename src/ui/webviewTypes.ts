@@ -33,6 +33,7 @@ export type WebviewMessage =
   | { type: 'pinVersion'; name: string; version: string; source: string }
   | { type: 'createRequirements' }
   | { type: 'bulkUpdate'; names: string[] }
+  | { type: 'bulkInstall'; names: string[] }
   | { type: 'bulkSync'; packages: Array<{ name: string; source: string }> }
   | { type: 'bulkRemove'; names: string[]; sources: string[] }
   | { type: 'takeSnapshot'; name: string }
@@ -48,7 +49,8 @@ export type WebviewMessage =
   | { type: 'syncRequirementsToInstalled'; name: string; source: string }
   | { type: 'requestVenvHealth' }
   | { type: 'updatePip' }
-  | { type: 'cursorAnalyzeUnused'; packageNames?: string[] };
+  | { type: 'cursorAnalyzeUnused'; userInitiated: true; packageNames?: string[] }
+  | { type: 'bulkRemoveUnusedConfirmed'; userInitiated: true; packages: Array<{ name: string; source: string }> };
 
 /** Aggregated workspace scan statistics sent alongside package data. */
 export interface ScanStats {
@@ -105,6 +107,16 @@ export interface PackageDisplayData {
   unusedConfidence?: number;
   /** Machine-readable reason codes explaining confidence deductions */
   unusedReasons?: string[];
+  /** Deterministic verdict tier for unused packages */
+  usageVerdict?: 'likely_unused' | 'uncertain';
+  /** Structured evidence from framework/config detectors */
+  usageEvidence?: Array<{
+    source: string;
+    file: string;
+    line?: number;
+    snippet?: string;
+    strength: 'strong' | 'weak';
+  }>;
   /** Set when config/script reference search found usage outside imports */
   referenceUsageFound?: boolean;
 }

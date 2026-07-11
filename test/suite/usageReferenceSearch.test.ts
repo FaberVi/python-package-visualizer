@@ -34,6 +34,17 @@ suite('UsageReferenceSearch', () => {
     assert.ok(hits.get('black')!.some(h => h.file === 'README.md'));
   });
 
+  test('ignores dependency declaration files', () => {
+    fs.writeFileSync(path.join(tmpDir, 'requirements.txt'), 'unused-pkg>=1.0\n');
+    fs.writeFileSync(
+      path.join(tmpDir, 'pyproject.toml'),
+      '[project]\nname = "demo"\ndependencies = ["unused-pkg"]\n'
+    );
+
+    const hits = search.search(tmpDir, ['unused-pkg']);
+    assert.strictEqual(hits.size, 0);
+  });
+
   test('skips virtualenv and cache directories', () => {
     const venvDir = path.join(tmpDir, '.venv', 'lib');
     fs.mkdirSync(venvDir, { recursive: true });

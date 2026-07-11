@@ -100,6 +100,25 @@ suite('displayCompiler', () => {
     assert.strictEqual(display.find(p => p.name === 'requests')?.isUsed, true);
   });
 
+  test('buildDisplayData marks unused packages from enriched Map', () => {
+    const unusedMap = new Map([
+      ['numpy', {
+        name: 'numpy',
+        confidence: 92,
+        reasons: ['no-import-match'],
+        verdict: 'likely_unused' as const,
+      }],
+    ]);
+
+    const display = buildDisplayData(scanned, checkResults, unusedMap);
+    const numpy = display.find(p => p.name === 'numpy');
+
+    assert.strictEqual(numpy?.isUsed, false);
+    assert.strictEqual(numpy?.unusedConfidence, 92);
+    assert.strictEqual(numpy?.usageVerdict, 'likely_unused');
+    assert.strictEqual(display.find(p => p.name === 'requests')?.isUsed, true);
+  });
+
   test('buildConfidenceContext aggregates requires, groups, and downloads', () => {
     const ctx = buildConfidenceContext(scanned, checkResults);
 

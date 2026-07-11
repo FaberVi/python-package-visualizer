@@ -2,7 +2,7 @@
   "name": "python-package-visualizer-community",
   "displayName": "Python Package Visualizer (Community)",
   "description": "Community-maintained fork to visualize, manage and audit Python workspace dependencies — version checks, CVE badges, unused package detection, dependency graph, uv migration, and one-click updates.",
-  "version": "3.2.0",
+  "version": "3.2.4",
   "icon": "media/icon.png",
   "publisher": "FaberVi",
   "license": "MIT",
@@ -228,7 +228,7 @@
         "pythonPackageVisualizer.cursorAiAnalysis": {
           "type": "boolean",
           "default": true,
-          "description": "When running in Cursor, enable AI-assisted review of unused packages via Agent chat."
+          "description": "Show the AI review button for unused packages in Cursor. Analysis runs only when you click that button — never automatically."
         },
         "pythonPackageVisualizer.cursorAiUseAutoModel": {
           "type": "boolean",

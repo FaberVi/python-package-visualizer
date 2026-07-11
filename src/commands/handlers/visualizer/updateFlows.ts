@@ -17,6 +17,9 @@ import {
   dedupeScannedPackages,
   mergeWorkspaceScans,
 } from './scanHelpers.js';
+import { UsageReferenceSearch } from '../../../modules/import/usageReferenceSearch.js';
+
+const referenceSearch = new UsageReferenceSearch();
 
 export interface VisualizerUpdateContext {
   logger: Logger;
@@ -82,10 +85,23 @@ export async function runCheckUpdates(ctx: VisualizerUpdateContext): Promise<voi
           }
         }
 
-        const unusedPackages = ctx.importScanner.getUnusedPackagesWithConfidence(
+        const confidenceContext = buildConfidenceContext(scanned, checkResults);
+        const evidence = ctx.importScanner.evidenceEngine.collectEvidence(roots);
+
+        const preliminaryUnused = ctx.importScanner.getUnusedPackagesWithConfidence(
           scanned.map(p => p.name),
           mergedImportedModules,
-          buildConfidenceContext(scanned, checkResults)
+          confidenceContext,
+          evidence
+        );
+
+        const refHits = referenceSearch.search(root, [...preliminaryUnused.keys()]);
+        const unusedPackages = ctx.importScanner.evidenceEngine.analyzeUnused(
+          scanned.map(p => p.name),
+          mergedImportedModules,
+          confidenceContext,
+          evidence,
+          refHits
         );
 
         const conflicts = await ctx.scanner.checkConflicts(root);

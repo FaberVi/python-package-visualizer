@@ -170,6 +170,21 @@ export const IMPORT_TO_PACKAGE: Record<string, string> = {
   'flask':                        'flask',
   'django':                       'django',
   'rest_framework':               'djangorestframework',
+  // ── Django ecosystem ─────────────────────────────────────────────────────
+  'corsheaders':                  'django-cors-headers',
+  'localflavor':                  'django-localflavor',
+  'phonenumber_field':            'django-phonenumber-field',
+  'phonenumbers':                 'phonenumbers',
+  'rest_framework_simplejwt':     'djangorestframework-simplejwt',
+  'drf_spectacular':              'drf-spectacular',
+  'guardian':                     'django-guardian',
+  'weasyprint':                   'weasyprint',
+  'stdnum':                       'python-stdnum',
+  'social_django':                'social-auth-app-django',
+  'social_core':                  'social-auth-core',
+  'cities_light':                 'django-cities-light',
+  'autoslug':                     'django-autoslug',
+  'djoser':                       'djoser',
   'celery':                       'celery',
   'redis':                        'redis',
   'websockets':                   'websockets',
@@ -253,8 +268,21 @@ export const NEVER_IMPORTED_PACKAGES = new Set([
   'annotated-types',    // pydantic helper
   // Testing / coverage CLI tools
   'pytest-cov', 'pytest-asyncio', 'pytest-mock', 'pytest-xdist', 'pytest-timeout',
+  'pytest-django',
   'coverage', 'coveralls',
+  // Django / typing stubs — loaded via config, not imported
+  'django-stubs', 'django-stubs-ext', 'djangorestframework-stubs',
+  'types-pyyaml',
   // DB drivers typically invoked by SQLAlchemy, not imported directly
   'psycopg2-binary', 'psycopg2', 'aiomysql', 'asyncpg',
   'aiosqlite', 'databases',
 ]);
+
+/**
+ * Packages that expose the same top-level import module under different PyPI names.
+ * Key: normalized pip package → alternate packages sharing the same import module.
+ */
+export const PACKAGE_MODULE_ALIASES: Record<string, string[]> = {
+  'phonenumberslite': ['phonenumbers'],
+  'phonenumbers': ['phonenumberslite'],
+};

@@ -9,8 +9,11 @@ import {
   UnusedConfidenceContext
 } from './import/confidence.js';
 import { mapImportToPackageName } from './import/packageMatcher.js';
+import { UsageEvidenceEngine } from './usageEvidence/engine.js';
+import type { UsageEvidence } from './usageEvidence/types.js';
 
 export { ImportScanResult, UnusedPackageInfo, UnusedConfidenceContext };
+export { UsageEvidenceEngine };
 
 /**
  * Coordinates Python import scanning and unused-package analysis.
@@ -18,6 +21,7 @@ export { ImportScanResult, UnusedPackageInfo, UnusedConfidenceContext };
 export class ImportScanner {
   private readonly fileScanner: FileImportScanner;
   private readonly confidenceAnalyzer: UnusedConfidenceAnalyzer;
+  readonly evidenceEngine = new UsageEvidenceEngine();
 
   constructor(logger: Logger) {
     this.fileScanner = new FileImportScanner(logger);
@@ -47,8 +51,9 @@ export class ImportScanner {
   getUnusedPackagesWithConfidence(
     declaredPackages: string[],
     importedModules: Set<string>,
-    context?: UnusedConfidenceContext
+    context?: UnusedConfidenceContext,
+    evidence?: Map<string, UsageEvidence[]>
   ): Map<string, UnusedPackageInfo> {
-    return this.confidenceAnalyzer.analyze(declaredPackages, importedModules, context);
+    return this.confidenceAnalyzer.analyze(declaredPackages, importedModules, context, evidence);
   }
 }

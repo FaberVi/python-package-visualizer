@@ -4,6 +4,7 @@ window.updateBulkBar = function () {
   const elBulkBar = document.getElementById('bulk-bar');
   const elBulkCount = document.getElementById('bulk-count');
   const elCheckAll = document.getElementById('check-all');
+  const elBulkInstall = document.getElementById('bulk-install');
   const elBulkUpdate = document.getElementById('bulk-update');
   const elBulkSync = document.getElementById('bulk-sync');
 
@@ -19,6 +20,7 @@ window.updateBulkBar = function () {
       .map(name => window.allPackages.find(p => p.name === name))
       .filter(Boolean);
 
+    const installsCount = selectedList.filter(p => p.status === 'not-installed').length;
     const updatesCount = selectedList.filter(p => p.status === 'update-available' && !p.updateBlockedByConflict).length;
     const syncsCount = selectedList.filter(p => {
       if (p.specifiedVersion && p.installedVersion) {
@@ -27,6 +29,15 @@ window.updateBulkBar = function () {
       }
       return false;
     }).length;
+
+    if (elBulkInstall) {
+      if (installsCount > 0) {
+        elBulkInstall.style.display = '';
+        elBulkInstall.textContent = `${t('bulk.installSelected')} (${installsCount})`;
+      } else {
+        elBulkInstall.style.display = 'none';
+      }
+    }
 
     if (elBulkUpdate) {
       if (updatesCount > 0) {

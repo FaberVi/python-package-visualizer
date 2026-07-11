@@ -3,6 +3,35 @@
  * Evaluates declared dependencies against static import scan metrics.
  */
 
+window.updateUnusedBulkBar = function () {
+  const bar = document.getElementById('unused-bulk-bar');
+  const countEl = document.getElementById('unused-bulk-count');
+  const removeBtn = document.getElementById('unused-bulk-remove');
+  if (!bar) return;
+
+  const size = window.selectedUnusedPackages?.size ?? 0;
+  if (size > 0) {
+    bar.style.display = 'flex';
+    if (countEl) {
+      countEl.textContent = window.t('unused.selectedCount').replace('{n}', String(size));
+    }
+    if (removeBtn) {
+      removeBtn.textContent = `${window.t('unused.removeSelected')} (${size})`;
+    }
+  } else {
+    bar.style.display = 'none';
+  }
+};
+
+window.syncUnusedSectionCheckAll = function (section, pkgNames) {
+  const checkAll = document.querySelector(`.unused-check-all[data-section="${section}"]`);
+  if (!checkAll || pkgNames.length === 0) return;
+
+  const selectedInSection = pkgNames.filter(name => window.selectedUnusedPackages.has(name)).length;
+  checkAll.checked = selectedInSection === pkgNames.length;
+  checkAll.indeterminate = selectedInSection > 0 && selectedInSection < pkgNames.length;
+};
+
 /**
  * Compiles and renders the Unused Packages checklist.
  * Compares import graph scans against packages declared in requirements files.
@@ -33,6 +62,7 @@ window.renderUnused = function () {
   }
 
   if (unused.length === 0) {
+    window.selectedUnusedPackages?.clear();
     elUnused.innerHTML = `<div style="max-width:900px;margin:0 auto;padding:24px;width:100%;box-sizing:border-box;">
       <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);margin-bottom:4px;">${window.t('unused.title')}</div>
       <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:24px;">${window.t('unused.subtitle')}</div>
@@ -64,6 +94,15 @@ window.renderUnused = function () {
       if (r === 'reverse-map') return window.t('unused.reasonReverseMap');
       if (r === 'high-downloads') return window.t('unused.reasonPopular');
       if (r === 'partial-match') return window.t('unused.reasonPartialMatch');
+      if (r === 'weak-config-evidence') return window.t('unused.reasonWeakEvidence');
+      if (r.startsWith('orphan-chain:')) {
+        const root = r.replace('orphan-chain:', '');
+        return window.t('unused.reasonOrphanChain').replace('{pkg}', root);
+      }
+      if (r.startsWith('optional-dep:')) {
+        const parent = r.replace('optional-dep:', '');
+        return window.t('unused.reasonOptionalDep').replace('{pkg}', parent);
+      }
       return r;
     }).join('\n');
   }
@@ -98,25 +137,57 @@ window.renderUnused = function () {
     };
   }
 
+  function formatEvidence(evidence) {
+    if (!evidence || evidence.length === 0) return '';
+    return evidence.slice(0, 3).map(e => {
+      const loc = e.line ? `${e.file}:${e.line}` : e.file;
+      return `${e.source} @ ${loc}`;
+    }).join('\n');
+  }
+
+  function getVerdictTier(pkg) {
+    if (pkg.usageVerdict === 'uncertain') {
+      return {
+        color: '#facc15',
+        bg: 'rgba(250,204,21,.12)',
+        border: 'rgba(250,204,21,.4)',
+        label: window.t('unused.verdictUncertain'),
+      };
+    }
+    return getConfidenceTier(pkg.unusedConfidence ?? 100);
+  }
+
   // Sort by confidence descending (highest risk first)
   const sorted = [...unused].sort((a, b) => (b.unusedConfidence ?? 100) - (a.unusedConfidence ?? 100));
+  const likelyUnused = sorted.filter(p => p.usageVerdict !== 'uncertain');
+  const uncertain = sorted.filter(p => p.usageVerdict === 'uncertain');
 
-  // Compute tier counts for summary cards
-  const highCount = sorted.filter(p => (p.unusedConfidence ?? 100) >= 80).length;
-  const mediumCount = sorted.filter(p => {
-    const c = p.unusedConfidence ?? 100;
-    return c >= 50 && c < 80;
-  }).length;
-  const lowCount = sorted.filter(p => (p.unusedConfidence ?? 100) < 50).length;
+  // Drop selections for packages no longer unused
+  if (window.selectedUnusedPackages) {
+    const unusedNames = new Set(unused.map(p => p.name));
+    for (const name of [...window.selectedUnusedPackages]) {
+      if (!unusedNames.has(name)) {
+        window.selectedUnusedPackages.delete(name);
+      }
+    }
+  }
 
-  const rowsHtml = sorted.map(pkg => {
+  function buildRows(pkgs) {
+    return pkgs.map(pkg => {
     const sourceShort = pkg.source ? String(pkg.source).split(/[\\/]/).pop() : '\u2014';
     const confidence = pkg.unusedConfidence ?? 100;
-    const tier = getConfidenceTier(confidence);
-    const tooltip = translateReasons(pkg.unusedReasons);
+    const tier = getVerdictTier(pkg);
+    const tooltip = [translateReasons(pkg.unusedReasons), formatEvidence(pkg.usageEvidence)]
+      .filter(Boolean)
+      .join('\n');
+    const isChecked = window.selectedUnusedPackages?.has(pkg.name);
 
     return `
     <tr class="unused-row" data-pkg="${window.esc(pkg.name)}" style="border-bottom:1px solid color-mix(in srgb, var(--vscode-panel-border) 40%, transparent);">
+      <td style="padding:12px 10px 12px 16px;width:36px;">
+        <input type="checkbox" class="unused-pkg-check" data-name="${window.esc(pkg.name)}" ${isChecked ? 'checked' : ''}
+          style="accent-color:#7c3aed;cursor:pointer;">
+      </td>
       <td style="padding:12px 16px;">
         <div style="font-weight:600;color:var(--vscode-textLink-foreground);cursor:pointer;" class="pkg-name-link" data-pkg="${window.esc(pkg.name)}">${window.esc(pkg.name)}</div>
         ${pkg.summary ? `<div style="font-size:10px;color:var(--vscode-descriptionForeground);margin-top:3px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.esc(pkg.summary)}</div>` : ''}
@@ -137,7 +208,28 @@ window.renderUnused = function () {
       </td>
     </tr>
     `;
-  }).join('');
+    }).join('');
+  }
+
+  // Compute tier counts for summary cards
+  const highCount = sorted.filter(p => p.usageVerdict !== 'uncertain' && (p.unusedConfidence ?? 100) >= 80).length;
+  const mediumCount = sorted.filter(p => {
+    if (p.usageVerdict === 'uncertain') return false;
+    const c = p.unusedConfidence ?? 100;
+    return c >= 50 && c < 80;
+  }).length;
+  const uncertainCount = uncertain.length;
+  const lowCount = sorted.filter(p => p.usageVerdict !== 'uncertain' && (p.unusedConfidence ?? 100) < 50).length;
+
+  const likelyRowsHtml = buildRows(likelyUnused);
+  const uncertainRowsHtml = buildRows(uncertain);
+  const selectedCount = window.selectedUnusedPackages?.size ?? 0;
+
+  const tableHeadCheckbox = `
+              <th style="padding:12px 10px 12px 16px;width:36px;">
+                <input type="checkbox" class="unused-check-all" data-section="__SECTION__" title="${window.esc(window.t('unused.selectAll'))}"
+                  style="accent-color:#7c3aed;cursor:pointer;">
+              </th>`;
 
   elUnused.innerHTML = `
     <div style="max-width:1100px;margin:0 auto;padding:24px;width:100%;box-sizing:border-box;">
@@ -145,7 +237,7 @@ window.renderUnused = function () {
         <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);">${window.t('unused.title')}</div>
         ${window.cursorAiAvailable ? `
           <button id="btn-cursor-ai-unused" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
-            ✨ ${window.t('unused.cursorAiBtn')}
+            ✨ ${window.t('unused.cursorAiUncertainBtn')}
           </button>
         ` : ''}
       </div>
@@ -171,8 +263,8 @@ window.renderUnused = function () {
           <div style="font-size:22px;font-weight:700;margin-top:4px;color:#fb923c;">${mediumCount}</div>
         </div>
         <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-top:3px solid #4ade80;border-radius:10px;padding:14px 16px;text-align:center;">
-          <div style="font-size:10px;text-transform:uppercase;font-weight:600;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">🟢 ${window.t('unused.lowConfidence')}</div>
-          <div style="font-size:22px;font-weight:700;margin-top:4px;color:#4ade80;">${lowCount}</div>
+          <div style="font-size:10px;text-transform:uppercase;font-weight:600;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">🟡 ${window.t('unused.verdictUncertain')}</div>
+          <div style="font-size:22px;font-weight:700;margin-top:4px;color:#facc15;">${uncertainCount}</div>
         </div>
       </div>
 
@@ -180,10 +272,62 @@ window.renderUnused = function () {
         <strong>${window.t('unused.headsUp')}</strong> ${window.t('unused.headsUpText')} <code>importlib</code>. ${window.t('unused.alwaysCheck')}
       </div>
 
-      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;overflow:hidden;">
+      <div id="unused-bulk-bar" style="display:${selectedCount > 0 ? 'flex' : 'none'};align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.25);">
+        <span id="unused-bulk-count" style="font-size:12px;font-weight:600;color:var(--vscode-foreground);">${window.t('unused.selectedCount').replace('{n}', String(selectedCount))}</span>
+        <button id="unused-bulk-remove" type="button" style="background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+          ${window.t('unused.removeSelected')} (${selectedCount})
+        </button>
+        <button id="unused-bulk-select-all" type="button" style="background:transparent;color:var(--vscode-textLink-foreground);border:1px solid var(--vscode-panel-border);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;">
+          ${window.t('unused.selectAll')}
+        </button>
+        <button id="unused-bulk-deselect" type="button" style="background:transparent;color:var(--vscode-descriptionForeground);border:1px solid var(--vscode-panel-border);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;">
+          ${window.t('unused.deselectAll')}
+        </button>
+      </div>
+
+      ${likelyUnused.length ? `
+      <div style="margin-bottom:12px;font-size:13px;font-weight:700;color:#f87171;">${window.t('unused.sectionLikelyUnused')}</div>
+      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;overflow:hidden;margin-bottom:20px;">
         <table style="width:100%;border-collapse:collapse;">
           <thead>
             <tr style="background:var(--vscode-editorGroupHeader-tabsBackground);">
+              ${tableHeadCheckbox.replace('__SECTION__', 'likely')}
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.title')}</th>
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.version')}</th>
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.sourceFile')}</th>
+              <th style="padding:12px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.confidence')}</th>
+              <th style="padding:12px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.actions')}</th>
+            </tr>
+          </thead>
+          <tbody>${likelyRowsHtml}</tbody>
+        </table>
+      </div>
+      ` : ''}
+
+      ${uncertain.length ? `
+      <div style="margin-bottom:12px;font-size:13px;font-weight:700;color:#facc15;">${window.t('unused.sectionUncertain')}</div>
+      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid rgba(250,204,21,.35);border-radius:10px;overflow:hidden;margin-bottom:20px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--vscode-editorGroupHeader-tabsBackground);">
+              ${tableHeadCheckbox.replace('__SECTION__', 'uncertain')}
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.title')}</th>
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.version')}</th>
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.sourceFile')}</th>
+              <th style="padding:12px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.confidence')}</th>
+              <th style="padding:12px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.actions')}</th>
+            </tr>
+          </thead>
+          <tbody>${uncertainRowsHtml}</tbody>
+        </table>
+      </div>
+      ` : ''}
+
+      <div style="display:none;background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--vscode-editorGroupHeader-tabsBackground);">
+              ${tableHeadCheckbox.replace('__SECTION__', 'likely')}
               <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.title')}</th>
               <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.version')}</th>
               <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.sourceFile')}</th>
@@ -191,7 +335,7 @@ window.renderUnused = function () {
               <th style="padding:12px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.actions')}</th>
             </tr>
           </thead>
-          <tbody>${rowsHtml}</tbody>
+          <tbody></tbody>
         </table>
       </div>
     </div>
@@ -202,7 +346,7 @@ window.renderUnused = function () {
     cursorBtn.addEventListener('click', () => {
       cursorBtn.disabled = true;
       cursorBtn.textContent = window.t('unused.cursorAiRunning');
-      window.vscode.postMessage({ type: 'cursorAnalyzeUnused' });
+      window.vscode.postMessage({ type: 'cursorAnalyzeUnused', userInitiated: true });
     });
   }
 
@@ -225,6 +369,92 @@ window.renderUnused = function () {
       const pkg = allPackages.find(p => p.name === pkgName);
       if (pkg && typeof window.showDetail === 'function') window.showDetail(pkg);
     });
+  });
+
+  const likelyNames = likelyUnused.map(p => p.name);
+  const uncertainNames = uncertain.map(p => p.name);
+  const allUnusedNames = sorted.map(p => p.name);
+
+  elUnused.querySelectorAll('.unused-pkg-check').forEach(chk => {
+    chk.addEventListener('change', () => {
+      const name = chk.dataset.name;
+      if (!name) return;
+      if (chk.checked) {
+        window.selectedUnusedPackages.add(name);
+      } else {
+        window.selectedUnusedPackages.delete(name);
+      }
+      window.updateUnusedBulkBar();
+      const rowSection = likelyNames.includes(name) ? 'likely' : 'uncertain';
+      window.syncUnusedSectionCheckAll(rowSection, rowSection === 'likely' ? likelyNames : uncertainNames);
+    });
+  });
+
+  elUnused.querySelectorAll('.unused-check-all').forEach(checkAll => {
+    checkAll.addEventListener('change', () => {
+      const section = checkAll.dataset.section;
+      const names = section === 'likely' ? likelyNames : uncertainNames;
+      names.forEach(name => {
+        if (checkAll.checked) {
+          window.selectedUnusedPackages.add(name);
+        } else {
+          window.selectedUnusedPackages.delete(name);
+        }
+      });
+      elUnused.querySelectorAll('.unused-pkg-check').forEach(chk => {
+        const name = chk.dataset.name;
+        if (names.includes(name)) {
+          chk.checked = checkAll.checked;
+        }
+      });
+      window.updateUnusedBulkBar();
+      window.syncUnusedSectionCheckAll(section, names);
+    });
+  });
+
+  window.syncUnusedSectionCheckAll('likely', likelyNames);
+  window.syncUnusedSectionCheckAll('uncertain', uncertainNames);
+
+  document.getElementById('unused-bulk-select-all')?.addEventListener('click', () => {
+    allUnusedNames.forEach(name => window.selectedUnusedPackages.add(name));
+    elUnused.querySelectorAll('.unused-pkg-check').forEach(chk => { chk.checked = true; });
+    elUnused.querySelectorAll('.unused-check-all').forEach(chk => {
+      chk.checked = true;
+      chk.indeterminate = false;
+    });
+    window.updateUnusedBulkBar();
+  });
+
+  document.getElementById('unused-bulk-deselect')?.addEventListener('click', () => {
+    window.selectedUnusedPackages.clear();
+    elUnused.querySelectorAll('.unused-pkg-check').forEach(chk => { chk.checked = false; });
+    elUnused.querySelectorAll('.unused-check-all').forEach(chk => {
+      chk.checked = false;
+      chk.indeterminate = false;
+    });
+    window.updateUnusedBulkBar();
+  });
+
+  document.getElementById('unused-bulk-remove')?.addEventListener('click', () => {
+    if (window.selectedUnusedPackages.size === 0) return;
+    const candidates = unused
+      .filter(p => window.selectedUnusedPackages.has(p.name))
+      .map(p => ({
+        name: p.name,
+        source: p.source || '',
+        confidence: p.unusedConfidence ?? 100,
+        hasReferenceHits: false,
+        suggestedRemove: p.usageVerdict !== 'uncertain' && (p.unusedConfidence ?? 100) >= 80,
+      }));
+    if (!candidates.length || typeof window.showUnusedRemoveConfirmDialog !== 'function') return;
+    window.showUnusedRemoveConfirmDialog(candidates, selected => {
+      window.selectedUnusedPackages.clear();
+      window.vscode.postMessage({
+        type: 'bulkRemoveUnusedConfirmed',
+        userInitiated: true,
+        packages: selected,
+      });
+    }, { mode: 'manual' });
   });
 };
 
@@ -255,12 +485,33 @@ window.renderUnusedAiResult = function (result) {
   }
   if (!el || !result) return;
 
+  window.lastUnusedAiResult = result;
   const refCount = Object.keys(result.referenceHits || {}).length;
+  const candidates = result.candidates || [];
   el.style.display = 'block';
   el.innerHTML = `
-    <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.3);border-radius:6px;padding:10px 14px;font-size:11px;color:var(--vscode-foreground);">
-      ${window.t('unused.cursorAiSent').replace('{n}', result.analyzed)}
-      ${refCount > 0 ? ` ${window.t('unused.cursorAiRefs').replace('{n}', refCount)}` : ''}
+    <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.3);border-radius:6px;padding:10px 14px;font-size:11px;color:var(--vscode-foreground);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <span>
+        ${window.t('unused.cursorAiSent').replace('{n}', result.analyzed)}
+        ${refCount > 0 ? ` ${window.t('unused.cursorAiRefs').replace('{n}', refCount)}` : ''}
+      </span>
+      ${candidates.length ? `
+        <button id="btn-apply-unused-removals" type="button" style="
+          background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;border-radius:6px;
+          padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;
+        ">${window.t('unused.applyRemovalsBtn')}</button>
+      ` : ''}
     </div>
   `;
+
+  document.getElementById('btn-apply-unused-removals')?.addEventListener('click', () => {
+    if (typeof window.showUnusedRemoveConfirmDialog !== 'function') return;
+    window.showUnusedRemoveConfirmDialog(candidates, selected => {
+      window.vscode.postMessage({
+        type: 'bulkRemoveUnusedConfirmed',
+        userInitiated: true,
+        packages: selected,
+      });
+    }, { mode: 'ai' });
+  });
 };

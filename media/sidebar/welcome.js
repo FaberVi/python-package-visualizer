@@ -26,7 +26,7 @@ document.getElementById('link-changelog').addEventListener('click', () =>
   openUrl('https://github.com/FaberVi/python-package-visualizer/blob/main/CHANGELOG.md')
 );
 document.getElementById('link-issue').addEventListener('click', () =>
-  openUrl('https://github.com/FaberVi/python-package-visualizer/issues/new')
+  openUrl('https://github.com/FaberVi/python-package-visualizer/issues')
 );
 document.getElementById('link-star').addEventListener('click', () =>
   openUrl('https://github.com/FaberVi/python-package-visualizer')

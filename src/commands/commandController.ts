@@ -211,7 +211,7 @@ export class CommandController {
           if (state) {
             this.unusedAiHandler.setScanState(state);
           }
-          void this.unusedAiHandler.analyzeUnusedWithCursor();
+          void this.unusedAiHandler.analyzeUnusedWithCursor(undefined, true);
         }
       )
     );
@@ -249,6 +249,7 @@ export class CommandController {
       fixConflict: (requirement: string, packageName: string) => this.fixConflict(requirement, packageName),
       rollbackPackage: (name: string, version: string) => this.rollbackPackage(name, version),
       updateAllPackages: (names: string[]) => this.updateAllPackages(names),
+      installAllPackages: (names: string[]) => this.installAllPackages(names),
       installNewPackage: (name: string, version?: string) => this.installNewPackage(name, version),
       searchPypi: (query: string) => this.utilityHandler.searchPypi(query),
       exportReport: (format: 'markdown' | 'json') => this.exportReport(format),
@@ -262,6 +263,8 @@ export class CommandController {
           await this.removeFromRequirements(names[i], sources[i] ?? '');
         }
       },
+      removeUnusedPackagesWithSnapshot: (packages: Array<{ name: string; source: string }>) =>
+        this.removeUnusedPackagesWithSnapshot(packages),
       takeSnapshot: (name: string) => this.snapshotHandler.takeSnapshot(name, this.lastPackages),
       restoreSnapshot: (id: string) => this.snapshotHandler.restoreSnapshot(id),
       deleteSnapshot: (id: string) => this.snapshotHandler.deleteSnapshot(id),
@@ -277,12 +280,15 @@ export class CommandController {
         this.syncRequirementsToInstalled(name, source),
       handleVenvHealthRequest: () => this.handleVenvHealthRequest(),
       handleUpdatePip: () => this.handleUpdatePip(),
-      analyzeUnusedWithCursor: async (packageNames?: string[]) => {
+      analyzeUnusedWithCursor: async (packageNames?: string[], userInitiated?: boolean) => {
+        if (userInitiated !== true) {
+          return;
+        }
         const state = this.visualizerHandler.getUnusedAiScanState();
         if (state) {
           this.unusedAiHandler.setScanState(state);
         }
-        await this.unusedAiHandler.analyzeUnusedWithCursor(packageNames);
+        await this.unusedAiHandler.analyzeUnusedWithCursor(packageNames, true);
       },
     };
   }
@@ -322,6 +328,10 @@ export class CommandController {
     await this.installerHandler.installNewPackage(packageName, version);
   }
 
+  async installAllPackages(names: string[]): Promise<void> {
+    await this.installerHandler.installAllPackages(names);
+  }
+
   async fixConflict(requirement: string, packageName: string): Promise<void> {
     const spec = getConflictInstallSpec({
       package: '',
@@ -351,6 +361,79 @@ export class CommandController {
 
   async bulkSyncRequirementsToInstalled(packages: Array<{ name: string; source: string }>): Promise<void> {
     await this.requirementsHandler.bulkSyncRequirementsToInstalled(packages, this.lastPackages);
+  }
+
+  async removeUnusedPackagesWithSnapshot(
+    packages: Array<{ name: string; source: string }>
+  ): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root || packages.length === 0) {
+      return;
+    }
+
+    const lang = vscode.workspace
+      .getConfiguration('pythonPackageVisualizer')
+      .get<string>('language', 'en');
+    const isIt = lang === 'it';
+    const names = packages.map(p => p.name).join(', ');
+    const preview = names.length > 120 ? `${names.slice(0, 117)}…` : names;
+
+    const confirmLabel = isIt ? 'Rimuovi con snapshot' : 'Remove with snapshot';
+    const cancelLabel = isIt ? 'Annulla' : 'Cancel';
+    const message = isIt
+      ? `Rimuovere ${packages.length} pacchetto/i dai file dipendenze e disinstallarli dal venv?\n\nVerrà creato uno snapshot automatico prima della rimozione.\n\n${preview}`
+      : `Remove ${packages.length} package(s) from dependency files and uninstall from the venv?\n\nAn automatic snapshot will be saved before removal.\n\n${preview}`;
+
+    const choice = await vscode.window.showWarningMessage(
+      message,
+      { modal: true },
+      confirmLabel,
+      cancelLabel
+    );
+    if (choice !== confirmLabel) {
+      return;
+    }
+
+    const snapLabel = isIt
+      ? `Pre-rimozione inutilizzati (${packages.length} pacchetti)`
+      : `Pre-unused-removal (${packages.length} packages)`;
+    await this.snapshotBeforeUpdate(snapLabel);
+
+    const { removed, failed } = await this.requirementsHandler.bulkRemovePackagesWithoutConfirm(packages);
+
+    const removedFromFiles = packages
+      .filter(p => !failed.includes(p.name))
+      .map(p => p.name);
+
+    let uninstalled = 0;
+    let uninstallFailed: string[] = [];
+    if (removedFromFiles.length > 0) {
+      const uninstallResult = await this.installerHandler.bulkUninstallPackages(removedFromFiles);
+      uninstalled = uninstallResult.uninstalled;
+      uninstallFailed = uninstallResult.failed;
+    }
+
+    if (failed.length === 0 && uninstallFailed.length === 0) {
+      void vscode.window.showInformationMessage(
+        isIt
+          ? `Python Packages: Rimossi ${removed} da file dipendenze, ${uninstalled} disinstallati dal venv ✅`
+          : `Python Packages: Removed ${removed} from dependency files, ${uninstalled} uninstalled from venv ✅`
+      );
+    } else {
+      const parts: string[] = [];
+      if (removed > 0) {
+        parts.push(isIt ? `${removed} rimossi da file` : `${removed} removed from files`);
+      }
+      if (uninstalled > 0) {
+        parts.push(isIt ? `${uninstalled} disinstallati` : `${uninstalled} uninstalled`);
+      }
+      const failedSummary = [...failed, ...uninstallFailed.filter(n => !failed.includes(n))];
+      void vscode.window.showWarningMessage(
+        isIt
+          ? `Python Packages: ${parts.join(', ') || 'Nessuna operazione'}. Falliti: ${failedSummary.join(', ') || 'nessuno'}`
+          : `Python Packages: ${parts.join(', ') || 'No changes'}. Failed: ${failedSummary.join(', ') || 'none'}`
+      );
+    }
   }
 
   async selectManualRequirements(): Promise<void> {
@@ -428,14 +511,11 @@ export class CommandController {
   }
 
   async handleUpdatePip(): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root) { return; }
-    const { exec } = await import('child_process');
-    exec('python -m pip install --upgrade pip', { cwd: root }, (err) => {
-      if (!err) {
-        void this.handleVenvHealthRequest(); // Refresh report after pip update
-      }
-    });
+    try {
+      await this.installerHandler.updatePip();
+    } finally {
+      void this.handleVenvHealthRequest();
+    }
   }
 
   private getWorkspaceRoot(): string | null {

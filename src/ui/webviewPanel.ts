@@ -279,6 +279,13 @@ export class WebviewPanel {
   sendUnusedAiResult(result: {
     analyzed: number;
     referenceHits: Record<string, Array<{ file: string; line: number; snippet: string }>>;
+    candidates?: Array<{
+      name: string;
+      source: string;
+      confidence: number;
+      hasReferenceHits: boolean;
+      suggestedRemove: boolean;
+    }>;
   }): void {
     if (!this.panel) {
       return;

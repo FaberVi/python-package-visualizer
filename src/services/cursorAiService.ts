@@ -79,7 +79,8 @@ export class CursorAiService {
     return [
       '# Python Package Visualizer — Unused Package AI Review',
       '',
-      'Please analyze whether these declared dependencies are truly unused in this workspace.',
+      'Please analyze whether these **uncertain** declared dependencies are truly unused in this workspace.',
+      'Packages already marked as likely unused were excluded — they were detected deterministically.',
       'Search the codebase for: direct imports, dynamic imports (`importlib`), CLI invocations,',
       'pytest plugins, FastAPI/Starlette runtime deps, Dockerfile/CI references, and pyproject scripts.',
       '',
@@ -99,6 +100,9 @@ export class CursorAiService {
       '---',
       '',
       'Prioritize false positives — if a package might be needed, say UNCERTAIN rather than UNUSED.',
+      '',
+      'After your review, return to the **Python Package Visualizer** → **Unused Packages** tab',
+      'and click **Apply removals** to remove packages you marked as UNUSED (snapshot + confirmation).',
     ].join('\n');
   }
 

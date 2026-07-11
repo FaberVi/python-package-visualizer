@@ -14,6 +14,7 @@ window.setupDomListeners = function () {
   const elBtnExport = document.getElementById('btn-export');
   const elExportMenu = document.getElementById('export-menu');
   const elExportWrap = document.getElementById('export-wrap');
+  const elBulkInstall = document.getElementById('bulk-install');
   const elBulkUpdate = document.getElementById('bulk-update');
   const elBulkSync = document.getElementById('bulk-sync');
   const elBulkDeselect = document.getElementById('bulk-deselect');
@@ -211,6 +212,19 @@ window.setupDomListeners = function () {
   }
 
   // Bulk actions updates triggers
+  elBulkInstall?.addEventListener('click', () => {
+    const names = [...window.selectedPackages].filter(name => {
+      const pkg = window.allPackages.find(p => p.name === name);
+      return pkg && pkg.status === 'not-installed';
+    });
+    if (names.length) {
+      window.vscode.postMessage({ type: 'bulkInstall', names });
+    }
+    window.selectedPackages.clear();
+    window.updateBulkBar();
+    window.renderAll();
+  });
+
   elBulkUpdate?.addEventListener('click', () => {
     const names = [...window.selectedPackages].filter(name => {
       const pkg = window.allPackages.find(p => p.name === name);

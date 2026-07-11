@@ -74,6 +74,8 @@ export function buildDisplayData(
     let isUsed = true;
     let unusedConfidence: number | undefined;
     let unusedReasons: string[] | undefined;
+    let usageVerdict: PackageDisplayData['usageVerdict'];
+    let usageEvidence: PackageDisplayData['usageEvidence'];
 
     if (unusedPackages) {
       if (isEnriched) {
@@ -82,6 +84,8 @@ export function buildDisplayData(
           isUsed = false;
           unusedConfidence = info.confidence;
           unusedReasons = info.reasons;
+          usageVerdict = info.verdict;
+          usageEvidence = info.usageEvidence;
         }
       } else {
         isUsed = !(unusedPackages as Set<string>).has(normName);
@@ -102,6 +106,8 @@ export function buildDisplayData(
       isUsed,
       unusedConfidence,
       unusedReasons,
+      usageVerdict,
+      usageEvidence,
       vulnerabilities: result?.vulnerabilities ?? [],
       releaseDate: result?.releaseDate ?? '',
       group: pkg.group ?? 'main',
@@ -129,7 +135,8 @@ export function buildDisplayData(
  */
 export function buildConfidenceContext(
   scanned: ScannedPackage[],
-  checkResults: VersionCheckResult[]
+  checkResults: VersionCheckResult[],
+  extraImportCandidates?: Map<string, Set<string>>
 ): UnusedConfidenceContext {
   const requiresMap = new Map<string, string[]>();
   const groupMap = new Map<string, string>();
@@ -146,7 +153,7 @@ export function buildConfidenceContext(
     }
   }
 
-  return { requiresMap, downloadsMap, groupMap };
+  return { requiresMap, downloadsMap, groupMap, extraImportCandidates };
 }
 
 /**

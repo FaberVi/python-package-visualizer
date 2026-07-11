@@ -15,6 +15,7 @@ export interface UnusedAiScanState {
 
 /**
  * Runs deep reference search and opens Cursor Agent for AI-assisted unused-package review.
+ * Analysis is never started automatically — only via explicit user action (webview button or command).
  */
 export class UnusedAiHandler {
   private readonly cursorAi = new CursorAiService();
@@ -37,8 +38,14 @@ export class UnusedAiHandler {
   }
 
   async analyzeUnusedWithCursor(
-    packageNames?: string[]
+    packageNames?: string[],
+    userInitiated = false
   ): Promise<void> {
+    if (!userInitiated) {
+      this.logger.warn('Cursor AI unused-package analysis ignored: not user-initiated.');
+      return;
+    }
+
     const root = this.getWorkspaceRoot();
     if (!root || !this.lastScan) {
       void vscode.window.showWarningMessage(
@@ -66,6 +73,10 @@ export class UnusedAiHandler {
       if (p.isUsed) {
         return false;
       }
+      // Focus AI review on uncertain packages; likely_unused are already deterministic.
+      if (!packageNames?.length && p.usageVerdict === 'likely_unused') {
+        return false;
+      }
       if (!packageNames?.length) {
         return true;
       }
@@ -74,7 +85,7 @@ export class UnusedAiHandler {
 
     if (unusedPackages.length === 0) {
       void vscode.window.showInformationMessage(
-        'Python Packages: No unused packages to analyze.'
+        'Python Packages: No uncertain packages to review — likely-unused items are already handled deterministically.'
       );
       return;
     }
@@ -109,6 +120,19 @@ export class UnusedAiHandler {
         referenceHits: Object.fromEntries(
           [...referenceHits.entries()].map(([pkg, hits]) => [pkg, hits])
         ),
+        candidates: unusedPackages.map(p => {
+          const norm = normalizeName(p.name);
+          const hasReferenceHits = referenceHits.has(norm);
+          const confidence = p.unusedConfidence ?? 100;
+          const likelyUnused = p.usageVerdict === 'likely_unused';
+          return {
+            name: p.name,
+            source: p.source || '',
+            confidence,
+            hasReferenceHits,
+            suggestedRemove: likelyUnused && confidence >= 80 && !hasReferenceHits,
+          };
+        }),
       });
     } catch (err) {
       this.logger.error(`Cursor AI analysis failed: ${String(err)}`);

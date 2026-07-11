@@ -4,6 +4,7 @@ import {
   buildUsedPackageSet,
   isPackageUsed,
 } from './packageMatcher.js';
+import type { UsageEvidence, UsageVerdict } from '../usageEvidence/types.js';
 
 export interface UnusedPackageInfo {
   /** Normalized package name */
@@ -12,6 +13,10 @@ export interface UnusedPackageInfo {
   confidence: number;
   /** Human-readable reasons explaining the confidence deductions */
   reasons: string[];
+  /** Classification aligned with deterministic review tiers */
+  verdict: UsageVerdict;
+  /** Evidence collected by framework/config detectors */
+  usageEvidence?: UsageEvidence[];
 }
 
 export interface UnusedConfidenceContext {
@@ -21,10 +26,20 @@ export interface UnusedConfidenceContext {
   downloadsMap: Map<string, number>;
   /** Map of package name → group (main, dev, test, docs, lint, optional) */
   groupMap: Map<string, string>;
+  /** Extra import-name candidates from PyPI cache or other sources */
+  extraImportCandidates?: Map<string, Set<string>>;
 }
 
 /** Packages below this threshold are not reported as unused (likely false positives). */
 export const UNUSED_REPORT_THRESHOLD = 50;
+
+function hasStrongEvidence(hits: UsageEvidence[] | undefined): boolean {
+  return Boolean(hits?.some(h => h.strength === 'strong'));
+}
+
+function hasWeakEvidenceOnly(hits: UsageEvidence[] | undefined): boolean {
+  return Boolean(hits?.length) && !hasStrongEvidence(hits);
+}
 
 /**
  * Computes unused packages with multi-signal confidence scoring.
@@ -33,7 +48,8 @@ export class UnusedConfidenceAnalyzer {
   analyze(
     declaredPackages: string[],
     importedModules: Set<string>,
-    context?: UnusedConfidenceContext
+    context?: UnusedConfidenceContext,
+    evidence?: Map<string, UsageEvidence[]>
   ): Map<string, UnusedPackageInfo> {
     const normalizedImports = new Set(
       [...importedModules].map(m => m.toLowerCase())
@@ -45,12 +61,17 @@ export class UnusedConfidenceAnalyzer {
 
     for (const pkg of declaredPackages) {
       const norm = normalizeName(pkg);
+      const pkgEvidence = evidence?.get(norm);
+
+      if (hasStrongEvidence(pkgEvidence)) {
+        continue;
+      }
 
       if (NEVER_IMPORTED_PACKAGES.has(norm)) {
         continue;
       }
 
-      if (isPackageUsed(norm, normalizedImports)) {
+      if (isPackageUsed(norm, normalizedImports, context?.extraImportCandidates?.get(norm))) {
         continue;
       }
 
@@ -58,13 +79,27 @@ export class UnusedConfidenceAnalyzer {
         continue;
       }
 
-      const { confidence, reasons } = this.scoreUnusedConfidence(norm, context, requiredBy);
+      let { confidence, reasons } = this.scoreUnusedConfidence(norm, context, requiredBy);
+
+      if (hasWeakEvidenceOnly(pkgEvidence)) {
+        confidence = Math.min(confidence, 55);
+        reasons = [...reasons, 'weak-config-evidence'];
+      }
 
       if (confidence < UNUSED_REPORT_THRESHOLD) {
         continue;
       }
 
-      result.set(norm, { name: norm, confidence, reasons });
+      const verdict: UsageVerdict =
+        hasWeakEvidenceOnly(pkgEvidence) ? 'uncertain' : 'likely_unused';
+
+      result.set(norm, {
+        name: norm,
+        confidence,
+        reasons,
+        verdict,
+        usageEvidence: pkgEvidence,
+      });
     }
 
     return result;

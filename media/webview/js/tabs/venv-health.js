@@ -62,6 +62,19 @@ window.renderVenvHealth = function () {
   const dupStatus = healthColor(report.duplicatePackages.length === 0);
   const conflictStatus = healthColor(reportConflictCount === 0);
 
+  /**
+   * Formats a byte count for display in the environment tab.
+   * @param {number} bytes
+   * @returns {string}
+   */
+  function formatDiskSize(bytes) {
+    if (!bytes || bytes <= 0) return '—';
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  const sitePackagesSize = report.sitePackagesSizeBytes || 0;
+
   // Primary status cards
   const cards = [
     {
@@ -85,7 +98,9 @@ window.renderVenvHealth = function () {
     {
       icon: '📊', label: window.t('venv.totalInstalled'),
       value: String(report.totalInstalled),
-      sub: `${window.t('venv.packages')}`,
+      sub: sitePackagesSize > 0
+        ? `${window.t('venv.packages')} · ${formatDiskSize(sitePackagesSize)} ${window.t('venv.onDisk')}`
+        : window.t('venv.packages'),
       color: '#a78bfa',
     },
   ];
@@ -202,10 +217,12 @@ window.renderVenvHealth = function () {
       const actionCell = isOutdated
         ? `<button class="venv-update-btn" data-pkg="${window.esc(p.name)}" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;border-radius:5px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:opacity .2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">↑ ${window.t('venv.updateBtn')}</button>`
         : '';
+      const sizeCell = p.diskSizeBytes ? formatDiskSize(p.diskSizeBytes) : '—';
       return `
       <tr class="venv-pkg-row" data-name="${window.esc(p.name.toLowerCase())}" style="${isOutdated ? 'background:color-mix(in srgb, #e8a317 6%, transparent);' : ''}">
         <td style="padding:8px 14px;font-weight:600;font-size:12px;color:var(--vscode-foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.esc(p.name)}</td>
         <td style="padding:8px 14px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;color:var(--vscode-descriptionForeground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.esc(p.version)}</td>
+        <td style="padding:8px 14px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap;">${sizeCell}</td>
         <td style="padding:8px 14px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;white-space:nowrap;">${latestCell}</td>
         <td style="padding:8px 14px;text-align:center;white-space:nowrap;">${actionCell}</td>
       </tr>`;
@@ -236,9 +253,10 @@ window.renderVenvHealth = function () {
             <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
               <thead style="position:sticky;top:0;z-index:1;">
                 <tr style="background:var(--vscode-editorGroupHeader-tabsBackground);">
-                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:40%;">${window.t('venv.pkgName')}</th>
-                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:20%;">${window.t('venv.pkgVersion')}</th>
-                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:20%;">${window.t('venv.pkgLatest')}</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:32%;">${window.t('venv.pkgName')}</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:16%;">${window.t('venv.pkgVersion')}</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:14%;">${window.t('venv.pkgDiskSize')}</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:18%;">${window.t('venv.pkgLatest')}</th>
                   <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;width:20%;">${window.t('venv.pkgActions')}</th>
                 </tr>
               </thead>
@@ -296,8 +314,9 @@ window.renderVenvHealth = function () {
   const btnUpdatePip = el.querySelector('#btn-update-pip');
   if (btnUpdatePip) {
     btnUpdatePip.addEventListener('click', () => {
+      window.venvHealthReport = null;
       btnUpdatePip.disabled = true;
-      btnUpdatePip.innerHTML = '<span class="btn-spinner"></span>Updating…';
+      btnUpdatePip.innerHTML = `<span class="btn-spinner"></span>${window.t('venv.updatingPip')}`;
       window.vscode.postMessage({ type: 'updatePip' });
     });
   }

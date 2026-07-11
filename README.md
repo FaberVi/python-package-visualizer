@@ -4,7 +4,7 @@
 
 **Community-maintained fork — dependency manager for Python projects in VS Code & Cursor**
 
-![Version](https://img.shields.io/badge/version-3.2.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.2.1-blue?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![VS Code](https://img.shields.io/badge/vscode-%5E1.105.0-007ACC?style=flat-square&logo=visualstudiocode)
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python)
@@ -76,6 +76,34 @@ If no dependency file is found, the panel shows an in-app empty state with a **S
 | **Remove Unused** | Delete packages from requirements with one click |
 | **Bulk Actions** | Select multiple packages and update/remove together |
 
+### 🧹 Unused Packages & Cursor AI Review
+
+The **Unused Packages** tab lists dependencies declared in your manifest files that were **not found** in static Python import scans. Each row shows a **confidence score** (high / medium / low) based on signals such as transitive deps, dev groups, popularity, and partial name matches — so you can prioritize cleanup safely.
+
+| Action | What it does |
+|---|---|
+| **Remove** | Deletes the package line from its source file (`requirements.txt`, `pyproject.toml`, …), with fallback across included `-r` files and monorepo paths |
+| **Analyze with Cursor AI** | *(Cursor only)* Opens a new **Agent** chat with a structured review prompt — never runs automatically |
+| **Apply removals…** | After AI review, bulk-remove selected packages with confirmation and an automatic pre-removal snapshot |
+
+#### Cursor AI workflow (opt-in)
+
+1. Open the visualizer and scan the workspace.
+2. Go to the **Unused Packages** tab.
+3. Click **✨ Analyze with Cursor AI** (visible only in **Cursor** when AI analysis is enabled).
+4. The extension searches the workspace for **non-import references** (configs, Dockerfiles, CI, scripts) and sends the unused list to **Cursor Agent** with confidence scores and reference hits.
+5. Review the Agent verdicts (`USED` / `UNUSED` / `UNCERTAIN`) in the chat.
+6. Back in the tab, click **Apply removals…** to open a checklist — high-confidence packages without config references are pre-selected; confirm to remove them from dependency files.
+
+> **Privacy & control:** analysis starts **only when you click the button**. No background AI calls. In VS Code (without Cursor Agent), the AI button is hidden; one-click **Remove** still works.
+
+**Settings** (`Python Package Visualizer`):
+
+| Setting | Default | Description |
+|---|---|---|
+| `pythonPackageVisualizer.cursorAiAnalysis` | `true` | Show the Cursor AI review button on the Unused tab |
+| `pythonPackageVisualizer.cursorAiUseAutoModel` | `true` | Open Agent with Cursor **Auto** model (`default`) |
+
 ### 🧠 Code Intelligence
 
 **Import Annotations** — see package status right above each import line:
@@ -127,7 +155,7 @@ Provider: Groq
 
 ### 📊 Visualization & Analytics
 
-- **Dashboard** — health score, weekly downloads, security stats, maintainer activity
+- **Dashboard** — health score, security stats, maintainer activity
 - **Dependency Graph** — interactive D3.js tree with collapsible nodes
 - **Performance** — ranks packages by install time (Fast/Moderate/Slow)
 - **History** — timeline of all updates, installs, rollbacks
@@ -181,6 +209,13 @@ Inside the Package Visualizer panel:
 | `Esc` | Close detail panel |
 
 ---
+
+> 📋 **Full release history:** [CHANGELOG.md](CHANGELOG.md)
+
+## 🎯 What's New in v3.2.1
+
+- 🔧 **Reliable package removal** — UTF-16 `requirements.txt` support, PEP 508 direct URLs (`pkg @ git+…`), and fallback search across included `-r` files
+- 🔗 **Bulk align fix** — sync now searches included requirement files, handles pip hash/continuation lines, and preserves environment markers
 
 ## 🎯 What's New in v3.2.0
 
@@ -244,10 +279,10 @@ You can also pick a requirements file manually from the dashboard or the in-pane
 
 ```bash
 # VS Code
-code --install-extension python-package-visualizer-community-3.2.0.vsix
+code --install-extension python-package-visualizer-community-3.2.1.vsix
 
 # Cursor
-cursor --install-extension python-package-visualizer-community-3.2.0.vsix --force
+cursor --install-extension python-package-visualizer-community-3.2.1.vsix --force
 ```
 
 Or run the full pipeline from the project root:
@@ -431,6 +466,7 @@ python-package-visualizer/
 Issues and pull requests are welcome!
 
 - 🐛 **Bug reports & features:** [FaberVi/python-package-visualizer — Issues](https://github.com/FaberVi/python-package-visualizer/issues)
+- 📝 **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - 🔼 **Upstream:** [Elanchezhiyan-P/python-package-visualizer](https://github.com/Elanchezhiyan-P/python-package-visualizer)
 
 > **Before submitting a PR**, run `.\scripts\build-all.ps1` and make sure all 5 steps pass cleanly.
