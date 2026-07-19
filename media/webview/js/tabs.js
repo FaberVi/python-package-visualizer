@@ -69,7 +69,11 @@ window.updateStats = function (packages) {
   const ok       = packages.filter(p => p.status === 'up-to-date').length;
   const updates  = packages.filter(p => p.status === 'update-available' && !p.updateBlockedByConflict).length;
   const unknown  = packages.filter(p => p.status === 'unknown' || p.status === 'not-installed').length;
-  const drifted  = packages.filter(p => p.status === 'drift').length;
+  const drifted  = packages.filter(p =>
+    p.hasVersionDrift ||
+    p.status === 'drift' ||
+    (p.specifiedVersion && p.installedVersion && window.hasDrift?.(p.specifiedVersion, p.installedVersion))
+  ).length;
   const vulnPkgs = packages.filter(p => p.vulnerabilities && p.vulnerabilities.length > 0).length;
 
   const elStatOk = document.getElementById('stat-ok');

@@ -56,7 +56,7 @@ window.getFiltered = function () {
     );
   }
 
-  // Card Filter (clicked stat-card: 'up-to-date', 'update-available', 'unknown', 'vuln', 'conflict', 'stale')
+  // Card Filter (clicked stat-card: 'up-to-date', 'update-available', 'unknown', 'vuln', 'conflict', 'stale', 'drift')
   if (card) {
     if (card === 'vuln') {
       pkgs = pkgs.filter(p => p.vulnerabilities && p.vulnerabilities.length > 0);
@@ -69,6 +69,12 @@ window.getFiltered = function () {
         if (!p.releaseDate) return false;
         return (now - new Date(p.releaseDate).getTime()) > TWELVE_MONTHS;
       });
+    } else if (card === 'drift') {
+      pkgs = pkgs.filter(p =>
+        p.hasVersionDrift ||
+        p.status === 'drift' ||
+        (p.specifiedVersion && p.installedVersion && window.hasDrift?.(p.specifiedVersion, p.installedVersion))
+      );
     } else {
       pkgs = pkgs.filter(p => p.status === card);
     }
@@ -76,7 +82,15 @@ window.getFiltered = function () {
 
   // Status Dropdown
   if (status !== 'all') {
-    pkgs = pkgs.filter(p => p.status === status);
+    if (status === 'drift') {
+      pkgs = pkgs.filter(p =>
+        p.hasVersionDrift ||
+        p.status === 'drift' ||
+        (p.specifiedVersion && p.installedVersion && window.hasDrift?.(p.specifiedVersion, p.installedVersion))
+      );
+    } else {
+      pkgs = pkgs.filter(p => p.status === status);
+    }
   }
 
   // Group Dropdown

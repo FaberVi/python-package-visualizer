@@ -106,7 +106,8 @@ export class SnapshotHandler {
     for (const [name, version] of Object.entries(snap.packages)) {
       const { exe, args } = await this.installer.buildInstallSpawnArgs([`${name}==${version}`], root);
       try {
-        await this.installer.runInstallTracked(exe, args, root, name);
+        const installTime = await this.installer.runInstallTracked(exe, args, root, name);
+        this.installer.history.recordVersion(root, name, version, 'pip-install', installTime);
       } catch (err) {
         this.logger.warn(`Failed to install ${name}==${version} during snapshot restore: ${String(err)}`);
       }

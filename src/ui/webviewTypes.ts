@@ -30,7 +30,7 @@ export type WebviewMessage =
   | { type: 'searchPypi'; query: string }
   | { type: 'exportReport'; format: 'markdown' | 'json' }
   | { type: 'removeFromRequirements'; name: string; source: string }
-  | { type: 'pinVersion'; name: string; version: string; source: string }
+  | { type: 'pinVersion'; name: string; version: string; source: string } // legacy; prefer syncRequirementsToInstalled
   | { type: 'createRequirements' }
   | { type: 'bulkUpdate'; names: string[] }
   | { type: 'bulkInstall'; names: string[] }
@@ -50,7 +50,9 @@ export type WebviewMessage =
   | { type: 'requestVenvHealth' }
   | { type: 'updatePip' }
   | { type: 'cursorAnalyzeUnused'; userInitiated: true; packageNames?: string[] }
-  | { type: 'bulkRemoveUnusedConfirmed'; userInitiated: true; packages: Array<{ name: string; source: string }> };
+  | { type: 'bulkRemoveUnusedConfirmed'; userInitiated: true; packages: Array<{ name: string; source: string }> }
+  | { type: 'markPackageManuallyUsed'; name: string }
+  | { type: 'unmarkPackageManuallyUsed'; name: string };
 
 /** Aggregated workspace scan statistics sent alongside package data. */
 export interface ScanStats {
@@ -86,6 +88,10 @@ export interface PackageDisplayData {
   source: string;
   requires: string[];
   isUsed: boolean;
+  /** True when the user manually confirmed this package as used. */
+  manuallyMarkedUsed?: boolean;
+  /** Exact-pin drift vs installed, independent of update-available status. */
+  hasVersionDrift?: boolean;
   vulnerabilities: VulnerabilityInfo[];
   releaseDate: string;
   group: string;

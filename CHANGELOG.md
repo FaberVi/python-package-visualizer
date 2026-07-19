@@ -5,6 +5,25 @@ All notable changes to **Python Package Visualizer (Community)** are documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.5] — 2026-07-19
+
+### Added
+
+- Unused Packages: manually mark packages as used (persisted) and unmark them later
+- Performance tab: clear note that install times are measured only for installs/updates/rollbacks from this extension
+
+### Changed
+
+- Align Versions: drift only on exact pins (`==` / `===`); flexible ranges are no longer treated as out of sync
+- License display: show short license labels instead of full legal text walls (full text in a collapsible details block)
+- Dashboard dependency paths: truncated with tooltip, click-to-copy, and clearer auto-detected badge layout
+
+### Fixed
+
+- Performance tab always showing zeros — install duration is now timed, stored in history, and sent to the UI
+- License detection for LGPL/MPL and common PyPI license fields; MIT text recognition
+- Pre-release version comparison and exact-pin/wildcard edge cases for align and drift
+
 ## [3.2.4] — 2026-07-11
 
 ### Added

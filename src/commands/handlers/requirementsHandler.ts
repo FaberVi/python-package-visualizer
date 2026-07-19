@@ -20,7 +20,9 @@ export class RequirementsHandler {
   ) {}
 
   /**
-   * Pins a package to a specific version inside the target dependency file.
+   * Legacy: writes an exact pin (`==version`) into the dependency file.
+   * Prefer syncRequirementsToInstalled (Align) from the UI — file ← installed.
+   * Kept for the webview message protocol / programmatic callers.
    */
   async pinVersion(packageName: string, version: string, sourceFile: string): Promise<void> {
     const root = this.getWorkspaceRoot();
@@ -39,7 +41,8 @@ export class RequirementsHandler {
   }
 
   /**
-   * Aligns the requirement pin version with the currently installed version.
+   * Aligns the requirement file with the currently installed version (file ← env).
+   * Rewrites the line to `name==installedVersion` (may tighten a range to an exact pin).
    */
   async syncRequirementsToInstalled(
     packageName: string,
@@ -80,9 +83,8 @@ export class RequirementsHandler {
   }
 
   /**
-   * Aligns the requirement pin version with the currently installed version for multiple packages in bulk.
-   * Only syncs packages whose specified version actually diverges from the installed version (drift check).
-   * Reports per-package failures in the final message.
+   * Aligns requirement files to installed versions for multiple packages (bulk Align).
+   * Only syncs packages whose exact pin (`==`) diverges from the installed version.
    */
   async bulkSyncRequirementsToInstalled(
     packages: Array<{ name: string; source: string }>,

@@ -33,6 +33,8 @@ export interface MessageRouterDeps {
   handleVenvHealthRequest(): Promise<void>;
   handleUpdatePip(): Promise<void>;
   analyzeUnusedWithCursor(packageNames?: string[], userInitiated?: boolean): Promise<void>;
+  markPackageManuallyUsed(name: string): Promise<void>;
+  unmarkPackageManuallyUsed(name: string): Promise<void>;
 }
 
 export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage): void {
@@ -161,6 +163,20 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
         return;
       }
       void deps.analyzeUnusedWithCursor(m.packageNames, true);
+      break;
+    }
+    case 'markPackageManuallyUsed': {
+      const m = msg as { type: string; name: string };
+      if (m.name) {
+        void deps.markPackageManuallyUsed(m.name);
+      }
+      break;
+    }
+    case 'unmarkPackageManuallyUsed': {
+      const m = msg as { type: string; name: string };
+      if (m.name) {
+        void deps.unmarkPackageManuallyUsed(m.name);
+      }
       break;
     }
   }

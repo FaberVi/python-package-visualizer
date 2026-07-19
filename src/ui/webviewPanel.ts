@@ -39,6 +39,8 @@ import type { VersionHistoryCache } from '../services/versionHistoryCache.js';
 export type PackageEnrichment = {
   workspaceRoot: string;
   history: VersionHistoryCache;
+  /** Packages the user manually confirmed as used (normalized names). */
+  manualUsedPackages?: Set<string>;
 };
 
 export class WebviewPanel {
@@ -159,7 +161,14 @@ export class WebviewPanel {
     }
     const language = vscode.workspace.getConfiguration('pythonPackageVisualizer').get<string>('language', 'en');
     const packages = enrich
-      ? buildEnrichedDisplayData(scanned, checkResults, enrich.workspaceRoot, enrich.history, unusedPackages)
+      ? buildEnrichedDisplayData(
+          scanned,
+          checkResults,
+          enrich.workspaceRoot,
+          enrich.history,
+          unusedPackages,
+          enrich.manualUsedPackages
+        )
       : buildDisplayData(scanned, checkResults, unusedPackages);
     const sanitizedPackages = packages.map(p => ({
       ...p,
@@ -198,7 +207,14 @@ export class WebviewPanel {
     }
     const language = vscode.workspace.getConfiguration('pythonPackageVisualizer').get<string>('language', 'en');
     const packages = enrich
-      ? buildEnrichedDisplayData(scanned, checkResults, enrich.workspaceRoot, enrich.history, unusedPackages)
+      ? buildEnrichedDisplayData(
+          scanned,
+          checkResults,
+          enrich.workspaceRoot,
+          enrich.history,
+          unusedPackages,
+          enrich.manualUsedPackages
+        )
       : buildDisplayData(scanned, checkResults, unusedPackages);
     const sanitizedPackages = packages.map(p => ({
       ...p,

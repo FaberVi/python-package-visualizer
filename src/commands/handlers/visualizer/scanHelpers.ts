@@ -57,11 +57,15 @@ export function applyDriftStatus(
   for (const r of checkResults) {
     const pkg = scannedMap.get(r.packageName.toLowerCase());
     if (
-      pkg?.specifiedVersion &&
-      pkg.installedVersion &&
-      r.status === 'up-to-date' &&
-      hasDrift(pkg.specifiedVersion, pkg.installedVersion)
+      !pkg?.specifiedVersion ||
+      !pkg.installedVersion ||
+      !hasDrift(pkg.specifiedVersion, pkg.installedVersion)
     ) {
+      continue;
+    }
+    // Preserve update-available / conflict-blocked; only promote up-to-date → drift
+    // for the status badge. hasVersionDrift on display data covers the rest.
+    if (r.status === 'up-to-date') {
       r.status = 'drift';
     }
   }

@@ -68,7 +68,7 @@
       <option value="all">All statuses</option>
       <option value="update-available">Updates available</option>
       <option value="up-to-date">Up to date</option>
-      <option value="drift">Disaligned</option>
+      <option value="drift">Out of sync</option>
       <option value="unknown">Unknown</option>
       <option value="not-installed">Not installed</option>
     </select>
@@ -239,7 +239,7 @@
         <button type="button" class="alert-banner-dismiss" id="vuln-banner-dismiss" title="Dismiss">&times;</button>
       </div>
       <div id="drift-banner" class="alert-banner">
-        <span class="alert-banner-msg">⚠️ <strong id="drift-banner-count">0</strong> package(s) installed version differs from requirements file</span>
+        <span class="alert-banner-msg">⚠️ <strong id="drift-banner-count">0</strong> package(s) with an exact pin (==) that differs from the installed version</span>
         <button type="button" class="alert-banner-action" id="drift-banner-view">View drift</button>
         <button type="button" class="alert-banner-dismiss" id="drift-banner-dismiss" title="Dismiss">&times;</button>
       </div>

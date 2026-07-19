@@ -243,9 +243,12 @@ window.setupDomListeners = function () {
       .map(name => {
         const pkg = window.allPackages.find(p => p.name === name);
         if (!pkg?.specifiedVersion || !pkg.installedVersion) return null;
-        const pinned = window.extractPinnedVersion(pkg.specifiedVersion);
-        if (!pinned || window.versionsEquivalent(pinned, pkg.installedVersion)) return null;
-        return { name: pkg.name, source: pkg.source || '' };
+        if (!window.hasDrift(pkg.specifiedVersion, pkg.installedVersion)) return null;
+        return {
+          name: pkg.name,
+          source: pkg.source || '',
+          specifiedVersion: pkg.specifiedVersion,
+        };
       })
       .filter(Boolean);
 
@@ -256,7 +259,7 @@ window.setupDomListeners = function () {
       window.selectedPackages.clear();
       window.updateBulkBar();
       window.renderAll();
-    });
+    }, packagesToSync);
   });
 
   elBulkDeselect?.addEventListener('click', () => {

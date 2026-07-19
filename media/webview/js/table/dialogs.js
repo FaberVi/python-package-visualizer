@@ -2,10 +2,25 @@
  * Package table confirmation dialogs.
  */
 
-window.showSyncConfirmDialog = function (onSync) {
+/**
+ * Confirm before Align/Sync. Optionally warns when sync would tighten a range to `==`.
+ * @param {() => void} onSync
+ * @param {Array<{ name?: string, specifiedVersion?: string }>|undefined} packages
+ */
+window.showSyncConfirmDialog = function (onSync, packages) {
   document.getElementById('sync-confirm-dialog')?.remove();
 
   const t = window.t || (k => k);
+  const list = Array.isArray(packages) ? packages : [];
+  const tightenCount = list.filter(p =>
+    window.wouldTightenToExactPin?.(p?.specifiedVersion ?? '')
+  ).length;
+  const rangeWarning = tightenCount > 0
+    ? `<div style="font-size:12px;color:var(--vscode-editorWarning-foreground,#d29922);margin-bottom:16px;line-height:1.5;padding:8px 10px;border-radius:6px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.35);">
+        ${t('sync.rangeTightenWarning').replace('{n}', String(tightenCount))}
+      </div>`
+    : '';
+
   const dialog = document.createElement('div');
   dialog.id = 'sync-confirm-dialog';
   dialog.style.cssText = `
@@ -21,9 +36,10 @@ window.showSyncConfirmDialog = function (onSync) {
       <div style="font-size:16px;font-weight:700;color:var(--vscode-foreground);margin-bottom:8px;">
         ${t('sync.confirmTitle')}
       </div>
-      <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:20px;line-height:1.5;">
+      <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:12px;line-height:1.5;">
         ${t('sync.confirmMessage')}
       </div>
+      ${rangeWarning}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button id="sync-dialog-snapshot" style="
           flex:1;min-width:120px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);

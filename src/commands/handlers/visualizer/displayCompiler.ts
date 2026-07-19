@@ -5,6 +5,7 @@ import type { PackageDisplayData, HistoryDisplayEntry, GraphPackageInfo } from '
 import type { VersionHistoryEntry } from '../../../services/versionHistoryCache.js';
 import type { VersionHistoryCache } from '../../../services/versionHistoryCache.js';
 import { getAlternatives } from '../../../data/alternativesMap.js';
+import { hasDrift } from '../../../utils/version.js';
 
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/g, '-');
 
@@ -19,11 +20,13 @@ export function buildEnrichedDisplayData(
   checkResults: VersionCheckResult[],
   workspaceRoot: string,
   history: VersionHistoryCache,
-  unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>
+  unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
+  manualUsedPackages?: Set<string>
 ): PackageDisplayData[] {
-  return buildDisplayData(scanned, checkResults, unusedPackages).map(pkg => ({
+  return buildDisplayData(scanned, checkResults, unusedPackages, manualUsedPackages).map(pkg => ({
     ...pkg,
     previousVersion: history.getPreviousVersion(workspaceRoot, pkg.name),
+    installTime: history.getLatestInstallTime(workspaceRoot, pkg.name),
   }));
 }
 
@@ -55,7 +58,8 @@ export function buildHistoryEntries(allEntries: FlatHistoryEntry[]): HistoryDisp
 export function buildDisplayData(
   scanned: ScannedPackage[],
   checkResults: VersionCheckResult[],
-  unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>
+  unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
+  manualUsedPackages?: Set<string>
 ): PackageDisplayData[] {
   const resultMap = new Map(checkResults.map(r => [r.packageName, r]));
   const isEnriched = unusedPackages instanceof Map;
@@ -71,13 +75,23 @@ export function buildDisplayData(
       status = 'conflict-blocked';
     }
 
+    const hasVersionDrift = Boolean(
+      pkg.specifiedVersion &&
+      pkg.installedVersion &&
+      hasDrift(pkg.specifiedVersion, pkg.installedVersion)
+    );
+
     let isUsed = true;
     let unusedConfidence: number | undefined;
     let unusedReasons: string[] | undefined;
     let usageVerdict: PackageDisplayData['usageVerdict'];
     let usageEvidence: PackageDisplayData['usageEvidence'];
+    let manuallyMarkedUsed = false;
 
-    if (unusedPackages) {
+    if (manualUsedPackages?.has(normName)) {
+      isUsed = true;
+      manuallyMarkedUsed = true;
+    } else if (unusedPackages) {
       if (isEnriched) {
         const info = (unusedPackages as Map<string, UnusedPackageInfo>).get(normName);
         if (info) {
@@ -97,6 +111,7 @@ export function buildDisplayData(
       installedVersion: pkg.installedVersion,
       latestVersion: result?.latestVersion ?? 'unknown',
       status,
+      hasVersionDrift,
       allVersions: result?.allVersions ?? [],
       summary: result?.summary ?? '',
       homePage: result?.homePage ?? '',
@@ -104,6 +119,7 @@ export function buildDisplayData(
       source: pkg.source,
       requires: sanitizeRequiresList(pkg.requires),
       isUsed,
+      manuallyMarkedUsed,
       unusedConfidence,
       unusedReasons,
       usageVerdict,

@@ -55,7 +55,9 @@ interface PyPIAPIResponse {
     home_page: string;
     project_url: string;
     license?: string;
+    license_expression?: string;
     requires_python?: string;
+    classifiers?: string[];
   };
   releases: Record<string, Array<{ yanked: boolean; upload_time?: string; size?: number }>>;
   vulnerabilities?: Array<{
@@ -286,10 +288,33 @@ export class VersionChecker {
       homePage: data.info.home_page ?? data.info.project_url ?? '',
       fetchedAt: Date.now(),
       releaseFiles: data.releases,
-      license: data.info.license ?? '',
+      license: this.resolveLicense(data.info),
       pythonRequires: data.info.requires_python ?? '',
       installSize,
     };
+  }
+
+  /**
+   * Prefer SPDX-ish classifiers / license_expression over raw legal blobs in info.license.
+   */
+  private resolveLicense(info: PyPIAPIResponse['info']): string {
+    const expression = info.license_expression?.trim();
+    if (expression) {
+      return expression;
+    }
+
+    const fromClassifiers = (info.classifiers ?? [])
+      .filter(c => c.startsWith('License ::'))
+      .map(c => c.replace(/^License ::\s*(?:OSI Approved ::\s*)?/i, '').trim())
+      .filter(c => c.length > 0 && !/^osi approved$/i.test(c));
+
+    if (fromClassifiers.length > 0) {
+      // Prefer short OSI names over "Other/Proprietary"
+      const preferred = fromClassifiers.find(c => !/other|proprietary/i.test(c));
+      return preferred ?? fromClassifiers[0];
+    }
+
+    return info.license ?? '';
   }
 
   private computeStatus(

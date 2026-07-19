@@ -81,4 +81,19 @@ suite('VersionHistoryCache', () => {
     cache.clearHistory(workspaceRoot);
     assert.deepStrictEqual(cache.getAllHistory(workspaceRoot), {});
   });
+
+  test('stores and returns latest installTime', () => {
+    cache.recordVersion(workspaceRoot, 'numpy', '1.0.0', 'pip-install', 2.5);
+    cache.recordVersion(workspaceRoot, 'numpy', '2.0.0', 'pip-install', 4.1);
+    assert.strictEqual(cache.getLatestInstallTime(workspaceRoot, 'numpy'), 4.1);
+  });
+
+  test('refreshes installTime on duplicate consecutive version', () => {
+    cache.recordVersion(workspaceRoot, 'flask', '3.0.0', 'pip-install', 1.2);
+    cache.recordVersion(workspaceRoot, 'flask', '3.0.0', 'pip-install', 3.4);
+    const history = cache.getHistory(workspaceRoot, 'flask');
+    assert.strictEqual(history.length, 1);
+    assert.strictEqual(history[0].installTime, 3.4);
+    assert.strictEqual(cache.getLatestInstallTime(workspaceRoot, 'flask'), 3.4);
+  });
 });

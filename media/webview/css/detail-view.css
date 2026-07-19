@@ -132,6 +132,52 @@
   font-size: 13px; font-weight: 600; color: var(--vscode-foreground); margin-top: 2px;
 }
 
+.detail-license-short {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.detail-license-details {
+  margin-top: 6px;
+}
+
+.detail-license-details--block {
+  margin: 10px 0 4px;
+  padding: 0;
+}
+
+.detail-license-details summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-textLink-foreground);
+  list-style: none;
+  user-select: none;
+}
+
+.detail-license-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-license-full {
+  margin: 8px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background, transparent);
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-weight: 400;
+}
+
 /* ── Overlay Backdrop (dismiss panels) ────────────── */
 #overlay {
   display:    none;

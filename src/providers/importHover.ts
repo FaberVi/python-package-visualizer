@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { VersionChecker } from '../services/versionChecker.js';
 import { ImportScanner } from '../modules/importScanner.js';
 import { PackageScanner } from '../modules/packageScanner.js';
+import { shortLicenseLabel } from '../utils/licenseLabel.js';
 
 // API cost / model info for known LLM and AI client classes
 const LLM_INFO: Record<string, { provider: string; pricing: string; speed: string; notes?: string }> = {
@@ -175,7 +176,12 @@ export class ImportHoverProvider implements vscode.HoverProvider {
     // ── Header: package · version · license ────────────────────────────────
     const headerBits: string[] = [`\u{1F4E6} **${result.packageName}**`];
     headerBits.push(`\`v${result.latestVersion}\``);
-    if (result.license) { headerBits.push(result.license); }
+    if (result.license) {
+      const short = shortLicenseLabel(result.license);
+      if (short) {
+        headerBits.push(short);
+      }
+    }
     md.appendMarkdown(`#### ${headerBits.join(' \u00B7 ')}\n\n`);
 
     // ── Summary (short, 1 line) ─────────────────────────────────────────────

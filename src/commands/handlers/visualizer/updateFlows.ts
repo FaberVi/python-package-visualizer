@@ -121,12 +121,14 @@ export async function runCheckUpdates(ctx: VisualizerUpdateContext): Promise<voi
         }
 
         if (ctx.sidebar?.isVisible()) {
+          const enrich = ctx.packageEnrichment(root);
           const displayData = buildEnrichedDisplayData(
             scannedWithConflicts,
             checkResults,
             root,
             ctx.history,
-            unusedPackages
+            unusedPackages,
+            enrich.manualUsedPackages
           );
           ctx.sidebar.sendPackages(displayData, undefined, 'update');
         }

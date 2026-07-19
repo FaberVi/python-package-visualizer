@@ -86,13 +86,34 @@ export function getWebviewCacheBust(extensionUri: vscode.Uri): string {
     // fall back to mtime-only token
   }
 
-  const graphPath = path.join(extensionUri.fsPath, 'media', 'webview', 'js', 'graph.js');
-  try {
-    const mtime = Math.floor(fs.statSync(graphPath).mtimeMs);
-    return `${version}.${mtime}`;
-  } catch {
-    return version;
-  }
+  const mediaRoot = path.join(extensionUri.fsPath, 'media', 'webview');
+  let latestMtime = 0;
+  const visit = (dir: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(full);
+        continue;
+      }
+      if (!/\.(js|css|html)$/i.test(entry.name)) {
+        continue;
+      }
+      try {
+        latestMtime = Math.max(latestMtime, Math.floor(fs.statSync(full).mtimeMs));
+      } catch {
+        // skip unreadable files
+      }
+    }
+  };
+  visit(mediaRoot);
+
+  return latestMtime > 0 ? `${version}.${latestMtime}` : version;
 }
 
 /**

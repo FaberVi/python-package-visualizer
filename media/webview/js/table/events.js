@@ -81,11 +81,15 @@ window.bindTableRowEvents = function (tbody) {
       const name = btn.dataset.name;
       const source = btn.dataset.source;
       if (name) {
+        const pkg = window.allPackages.find(p => p.name === name);
+        const packagesMeta = pkg
+          ? [{ name: pkg.name, specifiedVersion: pkg.specifiedVersion || '' }]
+          : [];
         window.showSyncConfirmDialog(() => {
           btn.disabled = true;
           btn.innerHTML = `<span class="btn-spinner"></span>...`;
           window.vscode.postMessage({ type: 'syncRequirementsToInstalled', name, source });
-        });
+        }, packagesMeta);
       }
     });
   });

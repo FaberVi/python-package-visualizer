@@ -127,11 +127,23 @@ window.showDetail = function (pkg) {
 
   const pypiLinkHtml = `<div class="field"><label>${window.t ? window.t('detail.pypiPage') : 'PyPI Page'}</label><div class="field-value"><span style="cursor:pointer;color:var(--vscode-textLink-foreground)" class="detail-pypi-link" data-name="${esc(pkg.name)}">${esc(pkg.name)} &#x2197;</span></div></div>`;
 
+  const licenseInfo = window.normalizeLicenseDisplay
+    ? window.normalizeLicenseDisplay(pkg.license || '')
+    : { label: pkg.license || '—', raw: pkg.license || '', isLong: false };
+  // Never put the legal body in the narrow meta column — short label only.
+  const licenseShort = (licenseInfo.label || '—').length > 40
+    ? `${String(licenseInfo.label).slice(0, 37).trim()}…`
+    : (licenseInfo.label || '—');
+  const licenseHasFullBody = !!(
+    licenseInfo.raw &&
+    (licenseInfo.isLong || licenseInfo.raw.length > licenseShort.length + 8)
+  );
+
   const metaGridHtml = `
     <div class="detail-meta-grid">
       <div class="detail-meta-item">
         <div class="detail-meta-label">${window.t ? window.t('detail.license') : 'License'}</div>
-        <div class="detail-meta-value">${esc(pkg.license || '—')}</div>
+        <div class="detail-meta-value detail-license-short">${esc(licenseShort)}</div>
       </div>
       <div class="detail-meta-item">
         <div class="detail-meta-label">${window.t ? window.t('detail.pythonRequires') : 'Python Requires'}</div>
@@ -142,6 +154,12 @@ window.showDetail = function (pkg) {
         <div class="detail-meta-value">${pkg.weeklyDownloads > 0 ? pkg.weeklyDownloads.toLocaleString() : '—'}</div>
       </div>
     </div>
+    ${licenseHasFullBody ? `
+      <details class="detail-license-details detail-license-details--block">
+        <summary>${esc(window.t ? window.t('lic.showFullText') : 'Show full license text')}</summary>
+        <pre class="detail-license-full">${esc(licenseInfo.raw)}</pre>
+      </details>
+    ` : ''}
   `;
 
   const alternativesHtml = (pkg.alternatives && pkg.alternatives.length > 0) ? `
@@ -169,7 +187,7 @@ window.showDetail = function (pkg) {
     <div class="field"><label>${window.t ? window.t('detail.latest') : 'Latest version'}</label><div class="field-value ver">${esc(pkg.latestVersion || '—')}</div></div>
     ${releaseDateHtml}
     ${freshnessHtml}
-    <div class="field"><label>${window.t ? window.t('detail.pinnedInFile') : 'Pinned in file'}</label><div class="field-value">${esc(pkg.specifiedVersion || 'any')}</div></div>
+    <div class="field"><label>${window.t ? window.t('detail.pinnedInFile') : 'Specified in file'}</label><div class="field-value">${esc(pkg.specifiedVersion || 'any')}</div></div>
     <div class="field"><label>${window.t ? window.t('detail.sourceFile') : 'Source file'}</label><div class="field-value">${esc(pkg.source || '—')}</div></div>
     ${pypiLinkHtml}
     ${pkg.requires && pkg.requires.length ? `<div class="field"><label>${window.t ? window.t('detail.requires') : 'Requires'} (${pkg.requires.length})</label><div class="field-value" style="color:var(--vscode-descriptionForeground);line-height:1.7">${pkg.requires.map(r => `<code>${esc(r)}</code>`).join(' ')}</div></div>` : ''}

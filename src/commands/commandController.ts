@@ -290,6 +290,8 @@ export class CommandController {
         }
         await this.unusedAiHandler.analyzeUnusedWithCursor(packageNames, true);
       },
+      markPackageManuallyUsed: (name: string) => this.visualizerHandler.markPackageManuallyUsed(name),
+      unmarkPackageManuallyUsed: (name: string) => this.visualizerHandler.unmarkPackageManuallyUsed(name),
     };
   }
 

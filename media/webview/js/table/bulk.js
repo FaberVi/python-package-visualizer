@@ -24,8 +24,7 @@ window.updateBulkBar = function () {
     const updatesCount = selectedList.filter(p => p.status === 'update-available' && !p.updateBlockedByConflict).length;
     const syncsCount = selectedList.filter(p => {
       if (p.specifiedVersion && p.installedVersion) {
-        const pinned = window.extractPinnedVersion(p.specifiedVersion);
-        return pinned !== null && !window.versionsEquivalent(pinned, p.installedVersion);
+        return window.hasDrift(p.specifiedVersion, p.installedVersion);
       }
       return false;
     }).length;

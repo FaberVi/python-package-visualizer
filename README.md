@@ -72,9 +72,9 @@ If no dependency file is found, the panel shows an in-app empty state with a **S
 | **One-click Update** | Update a single package or all at once |
 | **Rollback** | Revert to a previously installed version |
 | **Install New** | Search PyPI and install packages directly |
-| **Pin Versions** | Lock packages to their current version in `requirements.txt` |
+| **Align Versions** | Rewrite exact pins (`==`) in dependency files to match the installed version. Ranges / Poetry `^` are left unchanged on update. |
 | **Remove Unused** | Delete packages from requirements with one click |
-| **Bulk Actions** | Select multiple packages and update/remove together |
+| **Bulk Actions** | Select multiple packages and update/align/remove together |
 
 ### 🧹 Unused Packages & Cursor AI Review
 
@@ -386,7 +386,7 @@ python-package-visualizer/
 │   │   ├── packageScanner.ts     # Requirements/pyproject/setup.py parser
 │   │   ├── depFileDiscovery.ts   # Recursive monorepo dep-file search
 │   │   ├── parsers/              # Format-specific parsers
-│   │   ├── requirementsSync.ts   # Pin/unpin/remove from requirements
+│   │   ├── requirementsSync.ts   # Align/remove version lines in requirements
 │   │   ├── requirementsGenerator.ts
 │   │   ├── migrationHelper.ts
 │   │   └── setupScriptGenerator.ts

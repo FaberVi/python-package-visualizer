@@ -45,6 +45,7 @@ window.renderUnused = function () {
 
   const allPackages = window.allPackages || [];
   const unused = allPackages.filter(p => !p.isUsed);
+  const manuallyUsed = allPackages.filter(p => p.manuallyMarkedUsed);
   const totalScanned = allPackages.length;
   const stats = window.scanStats || window._scanStats || {};
   const filesScanned = stats.filesScanned || 0;
@@ -61,17 +62,85 @@ window.renderUnused = function () {
       : window.t('tab.unused');
   }
 
+  function buildManualUsedSection(pkgs) {
+    if (!pkgs.length) return '';
+    const rows = pkgs.map(pkg => {
+      const sourceShort = pkg.source ? String(pkg.source).split(/[\\/]/).pop() : '\u2014';
+      return `
+        <tr style="border-bottom:1px solid color-mix(in srgb, var(--vscode-panel-border) 40%, transparent);">
+          <td style="padding:12px 16px;">
+            <div style="font-weight:600;color:var(--vscode-textLink-foreground);cursor:pointer;" class="pkg-name-link" data-pkg="${window.esc(pkg.name)}">${window.esc(pkg.name)}</div>
+          </td>
+          <td style="padding:12px 16px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;color:var(--vscode-descriptionForeground);">${window.esc(pkg.installedVersion || '\u2014')}</td>
+          <td style="padding:12px 16px;font-size:11px;color:var(--vscode-descriptionForeground);" title="${window.esc(pkg.source || '')}">${window.esc(sourceShort)}</td>
+          <td style="padding:12px 16px;text-align:right;white-space:nowrap;">
+            <button class="unused-unmark-used-btn" data-name="${window.esc(pkg.name)}" title="${window.esc(window.t('unused.unmarkUsedTitle'))}"
+              style="background:rgba(148,163,184,.12);color:var(--vscode-foreground);border:1px solid var(--vscode-panel-border);padding:5px 12px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:600;">
+              ${window.t('unused.unmarkUsed')}
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    return `
+      <div style="margin-bottom:8px;font-size:13px;font-weight:700;color:#4ade80;">${window.t('unused.sectionManualUsed')}</div>
+      <div style="font-size:11px;color:var(--vscode-descriptionForeground);margin-bottom:12px;line-height:1.45;">${window.t('unused.sectionManualUsedHint')}</div>
+      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid rgba(74,222,128,.35);border-radius:10px;overflow:hidden;margin-bottom:20px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--vscode-editorGroupHeader-tabsBackground);">
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.title')}</th>
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.version')}</th>
+              <th style="padding:12px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.sourceFile')}</th>
+              <th style="padding:12px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--vscode-descriptionForeground);letter-spacing:.5px;">${window.t('unused.actions')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  function wireManualUsedButtons(rootEl) {
+    rootEl.querySelectorAll('.unused-mark-used-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const name = btn.dataset.name;
+        if (name) {
+          window.vscode.postMessage({ type: 'markPackageManuallyUsed', name });
+        }
+      });
+    });
+    rootEl.querySelectorAll('.unused-unmark-used-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const name = btn.dataset.name;
+        if (name) {
+          window.vscode.postMessage({ type: 'unmarkPackageManuallyUsed', name });
+        }
+      });
+    });
+    rootEl.querySelectorAll('.pkg-name-link').forEach(el => {
+      el.addEventListener('click', () => {
+        const pkgName = el.dataset.pkg;
+        const pkg = allPackages.find(p => p.name === pkgName);
+        if (pkg && typeof window.showDetail === 'function') window.showDetail(pkg);
+      });
+    });
+  }
+
   if (unused.length === 0) {
     window.selectedUnusedPackages?.clear();
     elUnused.innerHTML = `<div style="max-width:900px;margin:0 auto;padding:24px;width:100%;box-sizing:border-box;">
       <div style="font-size:20px;font-weight:700;color:var(--vscode-foreground);margin-bottom:4px;">${window.t('unused.title')}</div>
       <div style="font-size:12px;color:var(--vscode-descriptionForeground);margin-bottom:24px;">${window.t('unused.subtitle')}</div>
-      <div style="text-align:center;padding:80px 20px;background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px dashed var(--vscode-panel-border);border-radius:10px;">
+      <div style="text-align:center;padding:48px 20px;background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px dashed var(--vscode-panel-border);border-radius:10px;margin-bottom:20px;">
         <div style="font-size:42px;margin-bottom:12px;opacity:.7;">\u2705</div>
         <div style="font-size:14px;font-weight:600;color:var(--vscode-foreground);">${window.t('unused.allUsed')}</div>
         <div style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:6px;">Scanned ${filesScanned} file${filesScanned !== 1 ? 's' : ''} across ${totalScanned} package${totalScanned !== 1 ? 's' : ''}${rootShort ? ' in <code>' + window.esc(rootShort) + '</code>' : ''}</div>
       </div>
+      ${buildManualUsedSection(manuallyUsed)}
     </div>`;
+    wireManualUsedButtons(elUnused);
     return;
   }
 
@@ -204,6 +273,10 @@ window.renderUnused = function () {
         <div style="font-size:9px;color:var(--vscode-descriptionForeground);margin-top:3px;">${window.esc(tier.label)}</div>
       </td>
       <td style="padding:12px 16px;text-align:right;white-space:nowrap;">
+        <button class="unused-mark-used-btn" data-name="${window.esc(pkg.name)}" title="${window.esc(window.t('unused.markUsedTitle'))}"
+          style="background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.35);padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:600;margin-right:6px;">
+          ${window.t('unused.markUsed')}
+        </button>
         <button class="unused-remove-btn" data-name="${window.esc(pkg.name)}" data-source="${window.esc(pkg.source || '')}" style="background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3);padding:5px 12px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:600;">${window.t('btn.remove')}</button>
       </td>
     </tr>
@@ -323,6 +396,8 @@ window.renderUnused = function () {
       </div>
       ` : ''}
 
+      ${buildManualUsedSection(manuallyUsed)}
+
       <div style="display:none;background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:10px;overflow:hidden;">
         <table style="width:100%;border-collapse:collapse;">
           <thead>
@@ -362,14 +437,7 @@ window.renderUnused = function () {
     });
   });
 
-  // Wire up package name links to open detail panel
-  elUnused.querySelectorAll('.pkg-name-link').forEach(el => {
-    el.addEventListener('click', () => {
-      const pkgName = el.dataset.pkg;
-      const pkg = allPackages.find(p => p.name === pkgName);
-      if (pkg && typeof window.showDetail === 'function') window.showDetail(pkg);
-    });
-  });
+  wireManualUsedButtons(elUnused);
 
   const likelyNames = likelyUnused.map(p => p.name);
   const uncertainNames = uncertain.map(p => p.name);

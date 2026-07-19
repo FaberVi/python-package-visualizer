@@ -26,6 +26,11 @@ import type { PackageEnrichment } from '../../ui/webviewPanel.js';
 import { UsageReferenceSearch } from '../../modules/import/usageReferenceSearch.js';
 import { PypiTopLevelCache } from '../../modules/usageEvidence/pypiTopLevelCache.js';
 import type { PackageDisplayData, DepFilesEmptyState, GraphPackageInfo } from '../../ui/webviewTypes.js';
+import {
+  getManualUsedPackages,
+  markPackageManuallyUsed,
+  unmarkPackageManuallyUsed,
+} from '../../services/manualUsedPackages.js';
 
 /**
  * Handles core workspace package scanning, update checks, auto checks,
@@ -87,7 +92,8 @@ export class VisualizerHandler {
       this.lastCheckResults,
       root,
       this.history,
-      this.lastUnusedPackages
+      this.lastUnusedPackages,
+      getManualUsedPackages(this.context, root)
     );
     return {
       packages,
@@ -98,7 +104,31 @@ export class VisualizerHandler {
   }
 
   private packageEnrichment(root: string): PackageEnrichment {
-    return { workspaceRoot: root, history: this.history };
+    return {
+      workspaceRoot: root,
+      history: this.history,
+      manualUsedPackages: getManualUsedPackages(this.context, root),
+    };
+  }
+
+  /** Persist a manual "this package is used" confirmation and refresh the panel. */
+  async markPackageManuallyUsed(packageName: string): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root || !packageName) {
+      return;
+    }
+    await markPackageManuallyUsed(this.context, root, packageName);
+    await this.showVisualizer();
+  }
+
+  /** Clear a manual used confirmation so the package can reappear as unused. */
+  async unmarkPackageManuallyUsed(packageName: string): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root || !packageName) {
+      return;
+    }
+    await unmarkPackageManuallyUsed(this.context, root, packageName);
+    await this.showVisualizer();
   }
 
   /**
@@ -300,7 +330,8 @@ export class VisualizerHandler {
           checkResults,
           root,
           this.history,
-          unusedPackages
+          unusedPackages,
+          getManualUsedPackages(this.context, root)
         );
         this.sidebar.sendPackages(displayData, scanStats, 'init');
       }

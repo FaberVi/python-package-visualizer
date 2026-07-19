@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import { Logger } from '../../utils/logger.js';
-import { hasDrift, extractPinnedVersion } from '../../utils/version.js';
+import { hasDrift, extractExactPinnedVersion, isExactPin } from '../../utils/version.js';
 import { PackageScanner } from '../../modules/packageScanner.js';
 import { VersionHistoryCache } from '../../services/versionHistoryCache.js';
 import { RequirementsSync } from '../../modules/requirementsSync.js';
@@ -16,13 +16,45 @@ import { withUvGlobalArgs } from '../../utils/uvSpawn.js';
 export class PackageInstaller {
   constructor(
     private readonly scanner: PackageScanner,
-    private readonly history: VersionHistoryCache,
+    readonly history: VersionHistoryCache,
     private readonly reqSync: RequirementsSync,
     private readonly panel: WebviewPanel,
     private readonly logger: Logger,
     private readonly getWorkspaceRoot: () => string | null,
     private readonly refreshCallback: () => Promise<void>
   ) {}
+
+  /**
+   * Syncs the dependency file only when the current specifier is an exact pin (`==`).
+   * Flexible constraints (`>=`, `^`, `~=`, …) are left untouched to avoid silent tighten.
+   */
+  private async syncExactPinOnly(
+    root: string,
+    packageName: string,
+    version: string,
+    source: string | undefined,
+    specifiedVersion: string | undefined,
+    contextLabel: string
+  ): Promise<void> {
+    if (!source || !version) {
+      return;
+    }
+    if (!isExactPin(specifiedVersion ?? '')) {
+      this.logger.info(
+        `${contextLabel}: skip file sync for ${packageName} (flexible constraint: ${specifiedVersion || 'none'})`
+      );
+      return;
+    }
+    const syncResult = await this.reqSync.syncVersionWithFallback(
+      root,
+      packageName,
+      version,
+      source
+    );
+    if (syncResult.outcome !== 'synced') {
+      this.logger.warn(`${contextLabel} sync skipped for ${packageName}: ${syncResult.outcome}`);
+    }
+  }
 
   /**
    * Installs a pip package spec (e.g. "contourpy>=1.0.1") to resolve dependency conflicts.
@@ -40,21 +72,20 @@ export class PackageInstaller {
     this.logger.info(`Installing conflict fix: ${exe} ${args.join(' ')}`);
 
     try {
-      await this.runInstallTracked(exe, args, root, packageName);
+      const installTime = await this.runInstallTracked(exe, args, root, packageName);
 
       const scanned = (await this.scanner.scanWorkspace(root)).packages;
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg?.installedVersion) {
-        this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install');
-        const syncResult = await this.reqSync.syncVersionWithFallback(
+        this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install', installTime);
+        await this.syncExactPinOnly(
           root,
           packageName,
           pkg.installedVersion,
-          pkg.source
+          pkg.source,
+          pkg.specifiedVersion,
+          'Post-fix'
         );
-        if (syncResult.outcome !== 'synced') {
-          this.logger.warn(`Post-fix sync skipped for ${packageName}: ${syncResult.outcome}`);
-        }
       }
 
       void vscode.window.showInformationMessage(
@@ -88,17 +119,21 @@ export class PackageInstaller {
     this.logger.info(`Updating: ${exe} ${args.join(' ')}`);
 
     try {
-      await this.runInstallTracked(exe, args, root, packageName);
+      const installTime = await this.runInstallTracked(exe, args, root, packageName);
 
       // Record in history and sync requirements files
       const scanned = (await this.scanner.scanWorkspace(root)).packages;
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg?.installedVersion) {
-        this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install');
-        const syncResult = await this.reqSync.syncVersionWithFallback(root, packageName, pkg.installedVersion, pkg.source);
-        if (syncResult.outcome !== 'synced') {
-          this.logger.warn(`Post-update sync skipped for ${packageName}: ${syncResult.outcome}`);
-        }
+        this.history.recordVersion(root, packageName, pkg.installedVersion, 'pip-install', installTime);
+        await this.syncExactPinOnly(
+          root,
+          packageName,
+          pkg.installedVersion,
+          pkg.source,
+          pkg.specifiedVersion,
+          'Post-update'
+        );
       }
 
       void vscode.window.showInformationMessage(
@@ -144,17 +179,21 @@ export class PackageInstaller {
     this.logger.info(`Rolling back: ${exe} ${args.join(' ')}`);
 
     try {
-      await this.runInstallTracked(exe, args, root, packageName);
-      this.history.recordVersion(root, packageName, finalVersion, 'pip-rollback');
+      const installTime = await this.runInstallTracked(exe, args, root, packageName);
+      this.history.recordVersion(root, packageName, finalVersion, 'pip-rollback', installTime);
 
       // Sync requirements file with new version
       const scanned = (await this.scanner.scanWorkspace(root)).packages;
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg) {
-        const syncResult = await this.reqSync.syncVersionWithFallback(root, packageName, finalVersion, pkg.source);
-        if (syncResult.outcome !== 'synced') {
-          this.logger.warn(`Post-rollback sync skipped for ${packageName}: ${syncResult.outcome}`);
-        }
+        await this.syncExactPinOnly(
+          root,
+          packageName,
+          finalVersion,
+          pkg.source,
+          pkg.specifiedVersion,
+          'Post-rollback'
+        );
       }
 
       void vscode.window.showInformationMessage(
@@ -202,20 +241,20 @@ export class PackageInstaller {
           });
           try {
             const { exe, args } = await this.buildInstallSpawnArgs([name, '--upgrade'], root);
-            await this.runInstallTracked(exe, args, root, name);
+            const installTime = await this.runInstallTracked(exe, args, root, name);
 
             const scanned = (await this.scanner.scanWorkspace(root)).packages;
             const pkg = scanned.find(p => p.name === name);
             if (pkg?.installedVersion) {
-              const syncResult = await this.reqSync.syncVersionWithFallback(
+              this.history.recordVersion(root, name, pkg.installedVersion, 'pip-install', installTime);
+              await this.syncExactPinOnly(
                 root,
                 name,
                 pkg.installedVersion,
-                pkg.source
+                pkg.source,
+                pkg.specifiedVersion,
+                'Post-bulk-update'
               );
-              if (syncResult.outcome !== 'synced') {
-                this.logger.warn(`Post-update sync skipped for ${name}: ${syncResult.outcome}`);
-              }
             }
 
             succeeded++;
@@ -227,7 +266,7 @@ export class PackageInstaller {
       }
     );
 
-    // Reconcile any pins still out of sync (wrong source file, pruned includes, etc.)
+    // Reconcile exact pins still out of sync (wrong source file, pruned includes, etc.)
     const finalScan = (await this.scanner.scanWorkspace(root)).packages;
     for (const pkg of finalScan) {
       if (
@@ -288,8 +327,9 @@ export class PackageInstaller {
           });
           try {
             const pkg = scanned.find(p => p.name === name);
+            // Only honor exact pins (==) when installing; ranges stay flexible for the resolver.
             const version = pkg?.specifiedVersion
-              ? extractPinnedVersion(pkg.specifiedVersion) ?? undefined
+              ? extractExactPinnedVersion(pkg.specifiedVersion) ?? undefined
               : undefined;
             await this.runNewPackageInstall(name, version, root);
             succeeded++;
@@ -343,7 +383,13 @@ export class PackageInstaller {
     const pkgSpec = version ? `${packageName}==${version}` : packageName;
     const { exe, args } = await this.buildInstallSpawnArgs([pkgSpec], root);
     this.logger.info(`Installing new package: ${exe} ${args.join(' ')}`);
-    await this.runInstallTracked(exe, args, root, packageName);
+    const installTime = await this.runInstallTracked(exe, args, root, packageName);
+
+    const recordedVersion = version
+      ?? (await this.scanner.scanWorkspace(root)).packages.find(p => p.name === packageName)?.installedVersion;
+    if (recordedVersion) {
+      this.history.recordVersion(root, packageName, recordedVersion, 'pip-install', installTime);
+    }
 
     const reqFile = vscode.Uri.file(path.join(root, 'requirements.txt'));
     try {
@@ -530,8 +576,10 @@ export class PackageInstaller {
   /**
    * Spawns an installation command and processes the stdout output line-by-line
    * to send live completion percentages to the webview UI.
+   * @returns Elapsed install time in seconds.
    */
-  runInstallTracked(exe: string, args: string[], cwd: string, packageName: string): Promise<void> {
+  runInstallTracked(exe: string, args: string[], cwd: string, packageName: string): Promise<number> {
+    const startedAt = Date.now();
     return new Promise((resolve, reject) => {
       const child = cp.spawn(exe, args, { cwd, shell: false });
 
@@ -578,9 +626,10 @@ export class PackageInstaller {
       });
       child.on('close', (code: number | null) => {
         if (stdoutBuf) { processLine(stdoutBuf); }
+        const elapsedSec = Math.max(0.01, (Date.now() - startedAt) / 1000);
         if (code === 0) {
           sendProgress('Done', 100);
-          resolve();
+          resolve(elapsedSec);
         } else {
           reject(new Error(stderr || `Process exited with code ${String(code)}`));
         }

@@ -21,14 +21,9 @@ window.buildTableRowHtml = function (pkg, helpers) {
 
   let hasDrift = false;
   let reqVersion = '';
-  if (pkg.specifiedVersion && pkg.installedVersion) {
-    const pinned = window.extractPinnedVersion(pkg.specifiedVersion);
-    if (pinned) {
-      reqVersion = pinned;
-      if (pinned && !window.versionsEquivalent(pinned, pkg.installedVersion)) {
-        hasDrift = true;
-      }
-    }
+  if (pkg.specifiedVersion && pkg.installedVersion && window.hasDrift(pkg.specifiedVersion, pkg.installedVersion)) {
+    hasDrift = true;
+    reqVersion = window.extractExactPinnedVersion(pkg.specifiedVersion) || pkg.specifiedVersion;
   }
 
   let actionBtnHtml = '';
