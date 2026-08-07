@@ -6,6 +6,7 @@ import type { VersionHistoryEntry } from '../../../services/versionHistoryCache.
 import type { VersionHistoryCache } from '../../../services/versionHistoryCache.js';
 import { getAlternatives } from '../../../data/alternativesMap.js';
 import { hasDrift } from '../../../utils/version.js';
+import { isUpdateIgnoredForDisplay } from '../../../services/ignoredUpdates.js';
 
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/g, '-');
 
@@ -21,9 +22,10 @@ export function buildEnrichedDisplayData(
   workspaceRoot: string,
   history: VersionHistoryCache,
   unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
-  manualUsedPackages?: Set<string>
+  manualUsedPackages?: Set<string>,
+  ignoredUpdates?: Map<string, string>
 ): PackageDisplayData[] {
-  return buildDisplayData(scanned, checkResults, unusedPackages, manualUsedPackages).map(pkg => ({
+  return buildDisplayData(scanned, checkResults, unusedPackages, manualUsedPackages, ignoredUpdates).map(pkg => ({
     ...pkg,
     previousVersion: history.getPreviousVersion(workspaceRoot, pkg.name),
     installTime: history.getLatestInstallTime(workspaceRoot, pkg.name),
@@ -59,7 +61,8 @@ export function buildDisplayData(
   scanned: ScannedPackage[],
   checkResults: VersionCheckResult[],
   unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
-  manualUsedPackages?: Set<string>
+  manualUsedPackages?: Set<string>,
+  ignoredUpdates?: Map<string, string>
 ): PackageDisplayData[] {
   const resultMap = new Map(checkResults.map(r => [r.packageName, r]));
   const isEnriched = unusedPackages instanceof Map;
@@ -68,11 +71,21 @@ export function buildDisplayData(
     const result = resultMap.get(pkg.name);
     const normName = normalize(pkg.name);
 
-    let status = result?.status ?? 'unknown';
+    let status: string = result?.status ?? 'unknown';
     const updateBlockedByConflict =
       Boolean(pkg.hasConflict) && status === 'update-available';
     if (updateBlockedByConflict) {
       status = 'conflict-blocked';
+    }
+
+    const ignoredVersion = ignoredUpdates?.get(normName);
+    let ignoredUpdateVersion: string | undefined;
+    if (
+      status === 'update-available' &&
+      isUpdateIgnoredForDisplay(ignoredVersion, result?.latestVersion ?? 'unknown')
+    ) {
+      ignoredUpdateVersion = ignoredVersion;
+      status = 'update-ignored';
     }
 
     const hasVersionDrift = Boolean(
@@ -137,6 +150,7 @@ export function buildDisplayData(
       pythonWarning: result?.pythonWarning,
       installSize: result?.installSize,
       alternatives: getAlternatives(pkg.name),
+      ignoredUpdateVersion,
     };
   });
 }

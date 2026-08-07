@@ -7,7 +7,7 @@ export interface MessageRouterDeps {
   sendCapabilities(): void;
   updatePackage(name: string): Promise<void>;
   fixConflict(requirement: string, packageName: string): Promise<void>;
-  rollbackPackage(name: string, version: string): Promise<void>;
+  rollbackPackage(name: string, version: string, dueToIncompatibility?: boolean): Promise<void>;
   updateAllPackages(names: string[]): Promise<void>;
   installAllPackages(names: string[]): Promise<void>;
   installNewPackage(name: string, version?: string): Promise<void>;
@@ -32,9 +32,12 @@ export interface MessageRouterDeps {
   syncRequirementsToInstalled(name: string, source: string): Promise<void>;
   handleVenvHealthRequest(): Promise<void>;
   handleUpdatePip(): Promise<void>;
+  selectActiveVenvProject(root: string): Promise<void>;
   analyzeUnusedWithCursor(packageNames?: string[], userInitiated?: boolean): Promise<void>;
   markPackageManuallyUsed(name: string): Promise<void>;
   unmarkPackageManuallyUsed(name: string): Promise<void>;
+  ignorePackageUpdate(name: string, latestVersion: string): Promise<void>;
+  unignorePackageUpdate(name: string): Promise<void>;
 }
 
 export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage): void {
@@ -48,9 +51,11 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
       void deps.fixConflict(m.requirement, m.packageName);
       break;
     }
-    case 'rollbackPackage':
-      void deps.rollbackPackage(msg.name, msg.version);
+    case 'rollbackPackage': {
+      const m = msg as { type: string; name: string; version: string; dueToIncompatibility?: boolean };
+      void deps.rollbackPackage(m.name, m.version, m.dueToIncompatibility);
       break;
+    }
     case 'updateAllPackages':
       void deps.updateAllPackages(msg.names);
       break;
@@ -154,6 +159,13 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
     case 'requestVenvHealth':
       void deps.handleVenvHealthRequest();
       break;
+    case 'selectActiveVenvProject': {
+      const m = msg as { type: string; root: string };
+      if (m.root) {
+        void deps.selectActiveVenvProject(m.root);
+      }
+      break;
+    }
     case 'updatePip':
       void deps.handleUpdatePip();
       break;
@@ -176,6 +188,20 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
       const m = msg as { type: string; name: string };
       if (m.name) {
         void deps.unmarkPackageManuallyUsed(m.name);
+      }
+      break;
+    }
+    case 'ignorePackageUpdate': {
+      const m = msg as { type: string; name: string; latestVersion: string };
+      if (m.name && m.latestVersion) {
+        void deps.ignorePackageUpdate(m.name, m.latestVersion);
+      }
+      break;
+    }
+    case 'unignorePackageUpdate': {
+      const m = msg as { type: string; name: string };
+      if (m.name) {
+        void deps.unignorePackageUpdate(m.name);
       }
       break;
     }

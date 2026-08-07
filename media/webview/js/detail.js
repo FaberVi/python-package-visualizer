@@ -110,10 +110,12 @@ window.showDetail = function (pkg) {
   }
 
   const isConflictBlocked = pkg.status === 'conflict-blocked' || pkg.updateBlockedByConflict;
+  const canUpdate = pkg.status === 'update-available';
+  const isUpdateIgnored = pkg.status === 'update-ignored';
   const conflictActionsHtml = isConflictBlocked ? (() => {
     const parts = [];
     if (pkg.previousVersion) {
-      parts.push(`<button class="action-btn detail-rollback-btn" data-name="${esc(pkg.name)}" data-version="${esc(pkg.previousVersion)}">${window.t ? window.t('btn.revertPrevious') : '↩ Revert'}</button>`);
+      parts.push(`<button class="action-btn detail-rollback-btn" data-name="${esc(pkg.name)}" data-version="${esc(pkg.previousVersion)}" data-due-incompat="1">${window.t ? window.t('btn.revertPrevious') : '↩ Revert'}</button>`);
     }
     if (pkg.latestVersion && pkg.latestVersion !== 'unknown') {
       parts.push(`<button class="action-btn detail-force-update-btn" data-name="${esc(pkg.name)}">${window.t ? window.t('btn.forceUpdate') : '⬆ Force update'}</button>`);
@@ -124,6 +126,25 @@ window.showDetail = function (pkg) {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">${parts.join('')}</div>
     </div>`;
   })() : '';
+
+  const ignoreActionsHtml = canUpdate ? `
+    <div class="field">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        <button class="action-btn detail-update-btn" data-name="${esc(pkg.name)}">${window.t ? window.t('btn.update') : '⬆ Update'}</button>
+        <button class="action-btn detail-ignore-update-btn" data-name="${esc(pkg.name)}" data-latest="${esc(pkg.latestVersion)}">${window.t ? window.t('btn.ignoreUpdate') : '⊘ Ignore update'}</button>
+      </div>
+    </div>
+  ` : isUpdateIgnored ? `
+    <div class="field">
+      <label>${window.t ? window.t('detail.ignoredUpdate') : 'Ignored update'}</label>
+      <div class="field-value" style="font-size:12px;color:var(--vscode-descriptionForeground);">
+        ${window.t ? window.t('detail.ignoredUpdateHint').replace('{v}', esc(pkg.ignoredUpdateVersion || pkg.latestVersion || '—')) : `PyPI ${esc(pkg.ignoredUpdateVersion || pkg.latestVersion || '—')} dismissed`}
+      </div>
+      <div style="margin-top:8px;">
+        <button class="action-btn detail-unignore-update-btn" data-name="${esc(pkg.name)}">${window.t ? window.t('btn.unignoreUpdate') : '↩ Show update again'}</button>
+      </div>
+    </div>
+  ` : '';
 
   const pypiLinkHtml = `<div class="field"><label>${window.t ? window.t('detail.pypiPage') : 'PyPI Page'}</label><div class="field-value"><span style="cursor:pointer;color:var(--vscode-textLink-foreground)" class="detail-pypi-link" data-name="${esc(pkg.name)}">${esc(pkg.name)} &#x2197;</span></div></div>`;
 
@@ -193,6 +214,7 @@ window.showDetail = function (pkg) {
     ${pkg.requires && pkg.requires.length ? `<div class="field"><label>${window.t ? window.t('detail.requires') : 'Requires'} (${pkg.requires.length})</label><div class="field-value" style="color:var(--vscode-descriptionForeground);line-height:1.7">${pkg.requires.map(r => `<code>${esc(r)}</code>`).join(' ')}</div></div>` : ''}
     ${conflictsHtml}
     ${conflictActionsHtml}
+    ${ignoreActionsHtml}
     ${vulnHtml}
     ${alternativesHtml}
     ${history.length ? `<div class="field"><label>${window.t ? window.t('detail.availableVersions') : 'Available versions'}</label><div style="margin-top:6px;line-height:1.8">${versionChips}</div></div>` : ''}
@@ -236,6 +258,7 @@ window.showDetail = function (pkg) {
           type: 'rollbackPackage',
           name: btn.dataset.name,
           version: btn.dataset.version,
+          dueToIncompatibility: btn.dataset.dueIncompat === '1',
         });
         elDetail.style.display = 'none';
         elOverlay.style.display = 'none';
@@ -253,6 +276,40 @@ window.showDetail = function (pkg) {
         elDetail.style.display = 'none';
         elOverlay.style.display = 'none';
       });
+    });
+  });
+
+  elDetailBody.querySelectorAll('.detail-update-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      if (!name || !vscode) return;
+      btn.disabled = true;
+      vscode.postMessage({ type: 'updatePackage', name });
+      elDetail.style.display = 'none';
+      elOverlay.style.display = 'none';
+    });
+  });
+
+  elDetailBody.querySelectorAll('.detail-ignore-update-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      const latestVersion = btn.dataset.latest;
+      if (!name || !latestVersion || !vscode) return;
+      btn.disabled = true;
+      vscode.postMessage({ type: 'ignorePackageUpdate', name, latestVersion });
+      elDetail.style.display = 'none';
+      elOverlay.style.display = 'none';
+    });
+  });
+
+  elDetailBody.querySelectorAll('.detail-unignore-update-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      if (!name || !vscode) return;
+      btn.disabled = true;
+      vscode.postMessage({ type: 'unignorePackageUpdate', name });
+      elDetail.style.display = 'none';
+      elOverlay.style.display = 'none';
     });
   });
 

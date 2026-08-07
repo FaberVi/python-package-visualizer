@@ -20,4 +20,18 @@ suite('uvSpawn', () => {
       ['--system-certs', 'pip', 'list']
     );
   });
+
+  test('withUvGlobalArgs shapes uv uninstall batch args', () => {
+    assert.deepStrictEqual(
+      withUvGlobalArgs(['pip', 'uninstall', 'requests', 'numpy', '-y']),
+      ['--system-certs', 'pip', 'uninstall', 'requests', 'numpy', '-y']
+    );
+  });
+
+  test('withUvGlobalArgs shapes uv pip upgrade args', () => {
+    assert.deepStrictEqual(
+      withUvGlobalArgs(['pip', 'install', '--upgrade', 'pip']),
+      ['--system-certs', 'pip', 'install', '--upgrade', 'pip']
+    );
+  });
 });

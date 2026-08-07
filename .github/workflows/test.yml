@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -25,6 +27,14 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Unit coverage gate
+        run: npm run test:coverage:check
+
+      - name: Patch coverage gate
+        env:
+          COVERAGE_BASE: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+        run: node scripts/check-patch-coverage.mjs $COVERAGE_BASE
 
       - name: Lint
         run: npm run lint

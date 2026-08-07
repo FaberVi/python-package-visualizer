@@ -3,6 +3,8 @@ import { VersionChecker } from '../services/versionChecker.js';
 import { ImportScanner } from '../modules/importScanner.js';
 import { PackageScanner } from '../modules/packageScanner.js';
 import { shortLicenseLabel } from '../utils/licenseLabel.js';
+import { getIgnoredUpdateVersion } from '../services/ignoredUpdates.js';
+import { isUpdateSuppressedByIgnore } from '../utils/version.js';
 
 // API cost / model info for known LLM and AI client classes
 const LLM_INFO: Record<string, { provider: string; pricing: string; speed: string; notes?: string }> = {
@@ -44,6 +46,7 @@ export class ImportHoverProvider implements vscode.HoverProvider {
     private readonly checker: VersionChecker,
     private readonly importScanner: ImportScanner,
     private readonly packageScanner: PackageScanner,
+    private readonly context: vscode.ExtensionContext,
   ) {}
 
   async provideHover(
@@ -131,10 +134,11 @@ export class ImportHoverProvider implements vscode.HoverProvider {
     try {
       const result = await this.checker.checkPackage(packageName, '');
       let hasConflict = false;
-      const ws = vscode.workspace.workspaceFolders?.[0];
-      if (ws) {
+      const wsFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+      const workspaceRoot = wsFolder?.uri.fsPath ?? this.packageScanner.getActiveProjectRoot();
+      if (workspaceRoot) {
         try {
-          const conflicts = await this.packageScanner.checkConflicts(ws.uri.fsPath);
+          const conflicts = await this.packageScanner.checkConflicts(workspaceRoot);
           const norm = packageName.toLowerCase();
           hasConflict = conflicts.some(
             c => c.package.toLowerCase() === norm || c.conflictingPackage.toLowerCase() === norm
@@ -143,7 +147,14 @@ export class ImportHoverProvider implements vscode.HoverProvider {
           // ignore
         }
       }
-      const md = this.buildPackageCard(result, packageName, hasConflict);
+      const ignoredVersion = workspaceRoot
+        ? getIgnoredUpdateVersion(this.context, workspaceRoot, packageName)
+        : undefined;
+      const updateSuppressed = Boolean(
+        ignoredVersion &&
+        isUpdateSuppressedByIgnore(ignoredVersion, result.latestVersion)
+      );
+      const md = this.buildPackageCard(result, packageName, hasConflict, updateSuppressed);
       return new vscode.Hover(md, wordRange);
     } catch {
       return null;
@@ -157,19 +168,21 @@ export class ImportHoverProvider implements vscode.HoverProvider {
     result: import('../services/versionChecker.js').VersionCheckResult,
     packageName: string,
     hasConflict = false,
+    updateSuppressed = false,
   ): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
     md.supportHtml = true;
 
     const vulnCount = result.vulnerabilities?.length ?? 0;
+    const updateAvailable = result.status === 'update-available' && !updateSuppressed;
 
     // ── Status dot ──────────────────────────────────────────────────────────
     const statusIcon = vulnCount > 0
       ? '\u{1F534}'
-      : result.status === 'up-to-date'
+      : result.status === 'up-to-date' || updateSuppressed
         ? '\u{1F7E2}'
-        : result.status === 'update-available'
+        : updateAvailable
           ? '\u{1F7E1}'
           : '\u26AA';
 
@@ -196,11 +209,11 @@ export class ImportHoverProvider implements vscode.HoverProvider {
     const statusBits: string[] = [];
     if (vulnCount > 0) {
       statusBits.push(`${statusIcon} ${vulnCount} CVE${vulnCount !== 1 ? 's' : ''}`);
-    } else if (result.status === 'up-to-date') {
+    } else if (result.status === 'up-to-date' || updateSuppressed) {
       statusBits.push(`${statusIcon} Up to date`);
-    } else if (hasConflict && result.status === 'update-available') {
+    } else if (hasConflict && updateAvailable) {
       statusBits.push(`\u26A1 Update blocked (conflict)`);
-    } else if (result.status === 'update-available') {
+    } else if (updateAvailable) {
       statusBits.push(`${statusIcon} Update available`);
     }
     if (result.pythonRequires) {
@@ -217,9 +230,9 @@ export class ImportHoverProvider implements vscode.HoverProvider {
 
     // ── Quick Actions (compact, 2-3 max) ────────────────────────────────────
     const actions: string[] = [];
-    if (result.status === 'update-available' && !hasConflict) {
+    if (updateAvailable && !hasConflict) {
       actions.push(`[\u2191 Update](command:extension.updatePackage?${encodeURIComponent(JSON.stringify(packageName))} "pip install --upgrade ${packageName}")`);
-    } else if (hasConflict && result.status === 'update-available') {
+    } else if (hasConflict && updateAvailable) {
       actions.push(`[\u26A1 Conflict](command:extension.openPackageVisualizer "Open Package Visualizer to revert or force update")`);
     }
     actions.push(`[\u{1F50D} Inspect](command:extension.openPackageVisualizer "Open Package Visualizer")`);

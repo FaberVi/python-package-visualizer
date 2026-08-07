@@ -59,8 +59,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // CodeLens + Hover for Python imports
     const importScanner = new ImportScanner(logger);
-    const codeLensProvider = new ImportCodeLensProvider(logger, checker, importScanner, scanner);
-    const hoverProvider = new ImportHoverProvider(checker, importScanner, scanner);
+    const codeLensProvider = new ImportCodeLensProvider(logger, checker, importScanner, scanner, context);
+    const hoverProvider = new ImportHoverProvider(checker, importScanner, scanner, context);
+
+    controller.setImportCodeLensRefresh(() => codeLensProvider.refresh());
 
     context.subscriptions.push(
       vscode.languages.registerCodeLensProvider(

@@ -154,13 +154,13 @@ export class PackageInstaller {
    * Reverts a package to a previously recorded version or specific version target,
    * updating both the virtual environment and requirements lists.
    */
-  async rollbackPackage(packageName: string, version: string): Promise<void> {
+  async rollbackPackage(packageName: string, version: string): Promise<boolean> {
     const root = this.getWorkspaceRoot();
     if (!root) {
-      return;
+      return false;
     }
     if (!(await this.confirmInstallTarget(root))) {
-      return;
+      return false;
     }
 
     let finalVersion = version;
@@ -170,7 +170,7 @@ export class PackageInstaller {
         void vscode.window.showWarningMessage(
           `Python Packages: No previous version recorded for ${packageName}.`
         );
-        return;
+        return false;
       }
       finalVersion = prev;
     }
@@ -201,12 +201,14 @@ export class PackageInstaller {
       );
 
       await this.refreshCallback();
+      return true;
     } catch (err) {
       this.logger.error(`Rollback failed for ${packageName}: ${String(err)}`);
       void vscode.window.showErrorMessage(
         `Python Packages: Failed to rollback ${packageName}. See Output panel for details.`
       );
       this.logger.show();
+      return false;
     }
   }
 

@@ -15,6 +15,9 @@ window.renderVenvHealth = function () {
   if (!el) return;
 
   const report = window.venvHealthReport;
+  const availableProjects = window.venvAvailableProjects || [];
+  const activeProject = window.venvActiveProject || null;
+  const showProjectSelector = availableProjects.length > 1;
 
   // Show loading state if no report yet
   if (!report) {
@@ -26,8 +29,10 @@ window.renderVenvHealth = function () {
         <div style="font-size:13px;color:var(--vscode-descriptionForeground);">${window.t('venv.loading')}</div>
       </div>
     </div>`;
-    // Request health data from extension host
-    window.vscode.postMessage({ type: 'requestVenvHealth' });
+    // Request health data only when not waiting for a project switch response
+    if (!window.venvHealthPending) {
+      window.vscode.postMessage({ type: 'requestVenvHealth' });
+    }
     return;
   }
 
@@ -272,6 +277,22 @@ window.renderVenvHealth = function () {
   }
 
   // Environment path info
+  const projectSelectorHtml = showProjectSelector ? `
+    <div style="margin-bottom:20px;">
+      <div style="font-size:14px;font-weight:700;color:var(--vscode-foreground);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--vscode-panel-border);">${window.t('venv.activeProject')}</div>
+      <div style="background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background));border:1px solid var(--vscode-panel-border);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+        <select id="venv-project-select" style="background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:6px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none;max-width:100%;">
+          ${availableProjects.map((project, index) => `
+            <option value="${index}" ${activeProject && project.root === activeProject.root ? 'selected' : ''}>
+              ${window.esc(project.name)}
+            </option>
+          `).join('')}
+        </select>
+        <div style="font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.5;">${window.t('venv.activeProjectHint')}</div>
+      </div>
+    </div>
+  ` : '';
+
   const envInfoHtml = `
     <div style="margin-top:20px;">
       <div style="font-size:14px;font-weight:700;color:var(--vscode-foreground);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--vscode-panel-border);">${window.t('venv.venvPath')}</div>
@@ -302,6 +323,7 @@ window.renderVenvHealth = function () {
         ℹ️ ${window.t('venv.scopeHint')}
       </div>
       ${healthBannerHtml}
+      ${projectSelectorHtml}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:24px;">${cardsHtml}</div>
       ${diagnosticsHtml}
       ${installedHtml}
@@ -318,6 +340,24 @@ window.renderVenvHealth = function () {
       btnUpdatePip.disabled = true;
       btnUpdatePip.innerHTML = `<span class="btn-spinner"></span>${window.t('venv.updatingPip')}`;
       window.vscode.postMessage({ type: 'updatePip' });
+    });
+  }
+
+  // Wire up project selector
+  const projectSelect = el.querySelector('#venv-project-select');
+  if (projectSelect) {
+    projectSelect.addEventListener('change', () => {
+      const projects = window.venvAvailableProjects || [];
+      const index = Number.parseInt(projectSelect.value, 10);
+      const root = projects[index]?.root;
+      if (!root || (activeProject && root === activeProject.root)) {
+        return;
+      }
+      window.venvHealthPending = true;
+      window.venvHealthReport = null;
+      projectSelect.disabled = true;
+      window.vscode.postMessage({ type: 'selectActiveVenvProject', root });
+      window.renderVenvHealth();
     });
   }
 

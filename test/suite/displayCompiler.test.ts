@@ -11,14 +11,7 @@ import {
 } from '../../src/commands/handlers/visualizer/displayCompiler.js';
 import { VersionHistoryCache } from '../../src/services/versionHistoryCache.js';
 import type { ScannedPackage } from '../../src/modules/packageScanner.js';
-
-const stubLogger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-  show: () => {},
-} as unknown as import('../../src/utils/logger.js').Logger;
+import { stubLogger } from '../helpers/stubLogger.js';
 
 suite('displayCompiler', () => {
   let cacheDir: string;
@@ -91,6 +84,24 @@ suite('displayCompiler', () => {
     assert.strictEqual(numpy?.status, 'conflict-blocked');
     assert.strictEqual(numpy?.updateBlockedByConflict, true);
     assert.deepStrictEqual(requests?.requires, ['urllib3', 'certifi']);
+  });
+
+  test('buildDisplayData marks ignored updates until a newer PyPI release', () => {
+    const ignored = new Map<string, string>([['requests', '2.32.0']]);
+    const display = buildDisplayData(scanned, checkResults, undefined, undefined, ignored);
+    const requests = display.find(p => p.name === 'requests');
+    assert.strictEqual(requests?.status, 'update-ignored');
+    assert.strictEqual(requests?.ignoredUpdateVersion, '2.32.0');
+
+    const newerCheck = [
+      {
+        ...checkResults[0],
+        latestVersion: '2.33.0',
+      },
+      checkResults[1],
+    ];
+    const displayNewer = buildDisplayData(scanned, newerCheck, undefined, undefined, ignored);
+    assert.strictEqual(displayNewer.find(p => p.name === 'requests')?.status, 'update-available');
   });
 
   test('buildDisplayData marks unused packages from Set', () => {

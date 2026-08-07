@@ -387,6 +387,7 @@ window.statusBadge = function (status) {
   const labels = {
     'up-to-date':       window.t('status.upToDate'),
     'update-available': window.t('status.updateAvailable'),
+    'update-ignored':   window.t('status.updateIgnored'),
     'conflict-blocked': window.t('status.conflictBlocked'),
     'not-installed':    window.t('status.notInstalled'),
     'drift':            window.t('status.drift'),

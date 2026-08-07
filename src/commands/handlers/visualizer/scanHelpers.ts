@@ -1,10 +1,14 @@
 import * as fs from 'fs';
-import { hasDrift } from '../../../utils/version.js';
+import { hasDrift, isUpdateSuppressedByIgnore } from '../../../utils/version.js';
 import { discoverDepFiles } from '../../../modules/depFileDiscovery.js';
 import type { ScannedPackage, WorkspaceScanResult } from '../../../modules/packageScanner.js';
 import type { VersionCheckResult } from '../../../services/versionChecker.js';
 import type { ScanStats } from '../../../ui/webviewPanel.js';
 import type * as vscode from 'vscode';
+
+function normalizePackageName(name: string): string {
+  return name.toLowerCase().replace(/[-_.]+/g, '-');
+}
 
 /** Deduplicates scanned packages by normalized name and source path. */
 export function dedupeScannedPackages(packages: ScannedPackage[]): ScannedPackage[] {
@@ -71,16 +75,51 @@ export function applyDriftStatus(
   }
 }
 
+export function getActionableUpdates(
+  scanned: ScannedPackage[],
+  checkResults: VersionCheckResult[],
+  ignoredUpdates?: Map<string, string>
+): VersionCheckResult[] {
+  const conflicted = new Set(
+    scanned.filter(p => p.hasConflict).map(p => normalizePackageName(p.name))
+  );
+  return checkResults.filter(r => {
+    if (r.status !== 'update-available') {
+      return false;
+    }
+    const norm = normalizePackageName(r.packageName);
+    if (conflicted.has(norm)) {
+      return false;
+    }
+    const ignored = ignoredUpdates?.get(norm);
+    if (ignored && isUpdateSuppressedByIgnore(ignored, r.latestVersion)) {
+      return false;
+    }
+    return true;
+  });
+}
+
 export function countActionableUpdates(
   scanned: ScannedPackage[],
-  checkResults: VersionCheckResult[]
+  checkResults: VersionCheckResult[],
+  ignoredUpdates?: Map<string, string>
 ): number {
-  const conflicted = new Set(
-    scanned.filter(p => p.hasConflict).map(p => p.name.toLowerCase())
-  );
-  return checkResults.filter(
-    r => r.status === 'update-available' && !conflicted.has(r.packageName.toLowerCase())
-  ).length;
+  return getActionableUpdates(scanned, checkResults, ignoredUpdates).length;
+}
+
+/** Same rules as countActionableUpdates for a single check result. */
+export function isActionableUpdate(
+  result: VersionCheckResult,
+  hasConflict: boolean,
+  ignoredVersion?: string
+): boolean {
+  if (result.status !== 'update-available' || hasConflict) {
+    return false;
+  }
+  if (ignoredVersion && isUpdateSuppressedByIgnore(ignoredVersion, result.latestVersion)) {
+    return false;
+  }
+  return true;
 }
 
 export function resolveDetectedDepFilePaths(

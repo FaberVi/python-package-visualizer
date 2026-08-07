@@ -3,13 +3,13 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Logger } from '../../utils/logger.js';
+import { normalizeRootPath } from '../../utils/normalizeRootPath.js';
 
 const VENV_DIRS = ['.venv', 'venv', 'env', '.env'];
 const SEARCH_SUBDIRS = ['', 'backend', 'api', 'server', 'python'];
 
 function normalizePath(filePath: string): string {
-  const resolved = path.resolve(filePath);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  return normalizeRootPath(filePath);
 }
 
 export function expandConfigPath(configPath: string, root?: string): string {
@@ -25,6 +25,28 @@ export function expandConfigPath(configPath: string, root?: string): string {
       .replace(/\$\{userHome\}/g, os.homedir())
       .replace(/\$\{env:([^}]+)\}/g, (_, name: string) => process.env[name] ?? '')
   );
+}
+
+export function getWorkspaceFolderPaths(): string[] {
+  return (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+}
+
+export function getActiveEditorWorkspaceRoot(roots: string[]): string | null {
+  const docUri = vscode.window.activeTextEditor?.document?.uri;
+  if (!docUri) {
+    return null;
+  }
+
+  const normalizedDoc = normalizePath(docUri.fsPath);
+  for (const root of roots) {
+    const normalizedRoot = normalizePath(root);
+    const prefix = `${normalizedRoot}${path.sep}`;
+    if (normalizedDoc === normalizedRoot || normalizedDoc.startsWith(prefix)) {
+      return root;
+    }
+  }
+
+  return null;
 }
 
 export function resolveForWorkspace(root: string): string | null {
@@ -49,7 +71,61 @@ export function resolveForWorkspace(root: string): string | null {
   return null;
 }
 
-export function resolvePythonPath(logger: Logger): string {
+export function findRootInList(target: string, roots: string[]): string | null {
+  const normalized = normalizePath(target);
+  return roots.find(root => normalizePath(root) === normalized) ?? null;
+}
+
+export interface WorkspaceVenvProject {
+  root: string;
+  name: string;
+  pythonPath: string;
+}
+
+export function listWorkspaceVenvProjects(): WorkspaceVenvProject[] {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const projects: WorkspaceVenvProject[] = [];
+
+  for (const folder of folders) {
+    const pythonPath = resolveForWorkspace(folder.uri.fsPath);
+    if (pythonPath) {
+      projects.push({
+        root: folder.uri.fsPath,
+        name: folder.name,
+        pythonPath,
+      });
+    }
+  }
+
+  return projects;
+}
+
+export function resolveVenvAcrossRoots(roots: string[], preferredRoot?: string | null): string | null {
+  const orderedRoots: string[] = [];
+  const matchedPreferred = preferredRoot ? findRootInList(preferredRoot, roots) : null;
+  if (matchedPreferred) {
+    orderedRoots.push(matchedPreferred);
+  }
+  for (const root of roots) {
+    if (!orderedRoots.includes(root)) {
+      orderedRoots.push(root);
+    }
+  }
+
+  for (const root of orderedRoots) {
+    const venvPython = resolveForWorkspace(root);
+    if (venvPython) {
+      return venvPython;
+    }
+  }
+
+  return null;
+}
+
+export function resolvePythonPath(
+  logger: Logger,
+  getPreferredRoot?: () => string | null
+): string {
   const config = vscode.workspace.getConfiguration('pythonPackageVisualizer');
   const override = config.get<string>('pythonPath', '');
   if (override) {
@@ -57,10 +133,12 @@ export function resolvePythonPath(logger: Logger): string {
     return expandConfigPath(override, root);
   }
 
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (workspaceFolders && workspaceFolders.length > 0) {
-    const root = workspaceFolders[0].uri.fsPath;
-    const venvPython = resolveForWorkspace(root);
+  const roots = getWorkspaceFolderPaths();
+  if (roots.length > 0) {
+    const manualRoot = getPreferredRoot?.() ?? null;
+    const activeRoot = manualRoot ? null : getActiveEditorWorkspaceRoot(roots);
+    const preferredRoot = manualRoot ?? activeRoot;
+    const venvPython = resolveVenvAcrossRoots(roots, preferredRoot);
     if (venvPython) {
       logger.debug(`Using venv Python: ${venvPython}`);
       return venvPython;
@@ -106,6 +184,44 @@ export function isPythonInWorkspaceVenv(pythonPath: string, root: string): boole
   return false;
 }
 
-export function willUseGlobalPython(resolvePython: () => string, root: string): boolean {
-  return !isPythonInWorkspaceVenv(resolvePython(), root);
+export function findVenvOwningRoot(pythonPath: string, roots: string[]): string | null {
+  for (const root of roots) {
+    if (isPythonInWorkspaceVenv(pythonPath, root)) {
+      return root;
+    }
+  }
+  return null;
+}
+
+export function isPythonInAnyWorkspaceVenv(pythonPath: string, roots: string[]): boolean {
+  return findVenvOwningRoot(pythonPath, roots) !== null;
+}
+
+export function resolveHealthCheckCwd(
+  resolvePython: () => string,
+  getPreferredRoot?: () => string | null
+): string | null {
+  const roots = getWorkspaceFolderPaths();
+  if (roots.length === 0) {
+    return null;
+  }
+
+  const manualRoot = getPreferredRoot?.() ?? null;
+  if (manualRoot) {
+    const matched = findRootInList(manualRoot, roots);
+    if (matched) {
+      return matched;
+    }
+  }
+
+  const pythonPath = resolvePython();
+  return findVenvOwningRoot(pythonPath, roots) ?? roots[0];
+}
+
+export function willUseGlobalPython(resolvePython: () => string, _root?: string): boolean {
+  const roots = getWorkspaceFolderPaths();
+  if (roots.length === 0) {
+    return true;
+  }
+  return !isPythonInAnyWorkspaceVenv(resolvePython(), roots);
 }

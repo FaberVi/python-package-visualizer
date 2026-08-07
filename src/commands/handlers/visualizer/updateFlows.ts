@@ -15,6 +15,7 @@ import {
 import {
   applyDriftStatus,
   dedupeScannedPackages,
+  getActionableUpdates,
   mergeWorkspaceScans,
 } from './scanHelpers.js';
 import { UsageReferenceSearch } from '../../../modules/import/usageReferenceSearch.js';
@@ -128,16 +129,18 @@ export async function runCheckUpdates(ctx: VisualizerUpdateContext): Promise<voi
             root,
             ctx.history,
             unusedPackages,
-            enrich.manualUsedPackages
+            enrich.manualUsedPackages,
+            enrich.ignoredUpdates
           );
           ctx.sidebar.sendPackages(displayData, undefined, 'update');
         }
 
-        const outdated = checkResults.filter(r => {
-          if (r.status !== 'update-available') return false;
-          const pkg = scannedWithConflicts.find(p => p.name.toLowerCase() === r.packageName.toLowerCase());
-          return !pkg?.hasConflict;
-        });
+        const enrich = ctx.packageEnrichment(root);
+        const outdated = getActionableUpdates(
+          scannedWithConflicts,
+          checkResults,
+          enrich.ignoredUpdates
+        );
 
         if (outdated.length === 0) {
           void vscode.window.showInformationMessage(
@@ -192,11 +195,8 @@ export async function runTriggerAutoCheck(ctx: VisualizerUpdateContext): Promise
     applyDriftStatus(scanned, checkResults);
     ctx.updateStatusBar(checkResults, scanned);
 
-    const outdated = checkResults.filter(r => {
-      if (r.status !== 'update-available') return false;
-      const pkg = scanned.find(p => p.name.toLowerCase() === r.packageName.toLowerCase());
-      return !pkg?.hasConflict;
-    });
+    const enrich = ctx.packageEnrichment(root);
+    const outdated = getActionableUpdates(scanned, checkResults, enrich.ignoredUpdates);
 
     if (outdated.length > 0) {
       const names = outdated

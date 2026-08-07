@@ -82,7 +82,10 @@ window.setupMessageRouter = function () {
         break;
 
       case 'venvHealth':
+        window.venvHealthPending = false;
         window.venvHealthReport = msg.report || null;
+        window.venvActiveProject = msg.activeProject || null;
+        window.venvAvailableProjects = msg.availableProjects || [];
         if (window.activeTab === 'venv-health') {
           window.renderVenvHealth?.();
         }

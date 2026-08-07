@@ -105,6 +105,7 @@ window.applyStaticTranslations = function () {
     fs.options[3].textContent = t('toolbar.drift');
     fs.options[4].textContent = t('toolbar.unknown');
     fs.options[5].textContent = t('toolbar.notInstalled');
+    if (fs.options[6]) fs.options[6].textContent = t('toolbar.ignoredUpdates');
   }
 
   const fg = document.getElementById('filter-group');

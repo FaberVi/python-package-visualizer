@@ -31,7 +31,7 @@ import type {
   ScanStats,
   PackageDisplayData,
   GraphPackageInfo,
-  VenvHealthReport,
+  VenvHealthPayload,
   DepFilesEmptyState,
 } from './webviewTypes.js';
 import type { VersionHistoryCache } from '../services/versionHistoryCache.js';
@@ -41,6 +41,8 @@ export type PackageEnrichment = {
   history: VersionHistoryCache;
   /** Packages the user manually confirmed as used (normalized names). */
   manualUsedPackages?: Set<string>;
+  /** Ignored PyPI latest versions (normalized name → version). */
+  ignoredUpdates?: Map<string, string>;
 };
 
 export class WebviewPanel {
@@ -167,7 +169,8 @@ export class WebviewPanel {
           enrich.workspaceRoot,
           enrich.history,
           unusedPackages,
-          enrich.manualUsedPackages
+          enrich.manualUsedPackages,
+          enrich.ignoredUpdates
         )
       : buildDisplayData(scanned, checkResults, unusedPackages);
     const sanitizedPackages = packages.map(p => ({
@@ -213,7 +216,8 @@ export class WebviewPanel {
           enrich.workspaceRoot,
           enrich.history,
           unusedPackages,
-          enrich.manualUsedPackages
+          enrich.manualUsedPackages,
+          enrich.ignoredUpdates
         )
       : buildDisplayData(scanned, checkResults, unusedPackages);
     const sanitizedPackages = packages.map(p => ({
@@ -270,11 +274,16 @@ export class WebviewPanel {
   }
 
   /** Send virtual environment health report to the webview */
-  sendVenvHealth(report: VenvHealthReport): void {
+  sendVenvHealth(payload: VenvHealthPayload): void {
     if (!this.panel) {
       return;
     }
-    void this.panel.webview.postMessage({ type: 'venvHealth', report });
+    void this.panel.webview.postMessage({
+      type: 'venvHealth',
+      report: payload.report,
+      activeProject: payload.activeProject,
+      availableProjects: payload.availableProjects,
+    });
   }
 
   /** Send IDE / Cursor AI capability info to the webview */

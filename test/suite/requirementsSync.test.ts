@@ -3,14 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { RequirementsSync } from '../../src/modules/requirementsSync.js';
-
-const stubLogger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-  show: () => {},
-} as unknown as import('../../src/utils/logger.js').Logger;
+import { stubLogger } from '../helpers/stubLogger.js';
 
 suite('RequirementsSync', () => {
   let tmpDir: string;

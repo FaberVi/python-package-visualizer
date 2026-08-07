@@ -37,6 +37,7 @@
 }
 .badge.up-to-date      { background: var(--c-ok-bg);      color: var(--c-ok); }
 .badge.update-available { background: var(--c-update-bg);  color: var(--c-update); }
+.badge.update-ignored   { background: var(--c-unknown-bg); color: var(--c-unknown); }
 .badge.drift            { background: var(--c-update-bg);  color: var(--c-update); }
 .badge.unknown          { background: var(--c-unknown-bg); color: var(--c-unknown); }
 .badge.not-installed    { background: var(--c-missing-bg); color: var(--c-missing); }

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { Logger } from '../utils/logger.js';
 import { PackageScanner } from '../modules/packageScanner.js';
 import type { ImportScanner } from '../modules/importScanner.js';
@@ -13,6 +14,7 @@ import { RequirementsGenerator } from '../modules/requirementsGenerator.js';
 import { MigrationHelper } from '../modules/migrationHelper.js';
 import { SetupScriptGenerator } from '../modules/setupScriptGenerator.js';
 import { VenvHealthChecker } from '../services/venvHealthChecker.js';
+import { setSelectedVenvRoot, findMatchingWorkspaceRoot } from '../services/activeVenvRoot.js';
 
 // Import specialized domain handlers using ESM extensions
 import { PackageInstaller } from './handlers/packageInstaller.js';
@@ -94,7 +96,7 @@ export class CommandController {
       () => scanner.resolvePythonPath()
     );
 
-    const getRoot = () => this.getWorkspaceRoot();
+    const getRoot = () => this.getActiveProjectRoot();
     const getAllRoots = () => this.getAllWorkspaceRoots();
     const refreshView = () => this.refreshVisualizer();
 
@@ -247,7 +249,8 @@ export class CommandController {
       sendCapabilities: () => { void this.unusedAiHandler.sendCapabilities(); },
       updatePackage: (name: string) => this.updatePackage(name),
       fixConflict: (requirement: string, packageName: string) => this.fixConflict(requirement, packageName),
-      rollbackPackage: (name: string, version: string) => this.rollbackPackage(name, version),
+      rollbackPackage: (name: string, version: string, dueToIncompatibility?: boolean) =>
+        this.rollbackPackage(name, version, dueToIncompatibility),
       updateAllPackages: (names: string[]) => this.updateAllPackages(names),
       installAllPackages: (names: string[]) => this.installAllPackages(names),
       installNewPackage: (name: string, version?: string) => this.installNewPackage(name, version),
@@ -280,6 +283,7 @@ export class CommandController {
         this.syncRequirementsToInstalled(name, source),
       handleVenvHealthRequest: () => this.handleVenvHealthRequest(),
       handleUpdatePip: () => this.handleUpdatePip(),
+      selectActiveVenvProject: (root: string) => this.handleSelectActiveVenvProject(root),
       analyzeUnusedWithCursor: async (packageNames?: string[], userInitiated?: boolean) => {
         if (userInitiated !== true) {
           return;
@@ -292,7 +296,14 @@ export class CommandController {
       },
       markPackageManuallyUsed: (name: string) => this.visualizerHandler.markPackageManuallyUsed(name),
       unmarkPackageManuallyUsed: (name: string) => this.visualizerHandler.unmarkPackageManuallyUsed(name),
+      ignorePackageUpdate: (name: string, latestVersion: string) =>
+        this.visualizerHandler.ignorePackageUpdate(name, latestVersion),
+      unignorePackageUpdate: (name: string) => this.visualizerHandler.unignorePackageUpdate(name),
     };
+  }
+
+  setImportCodeLensRefresh(fn: () => void): void {
+    this.visualizerHandler.setCodeLensRefresh(fn);
   }
 
   /**
@@ -309,8 +320,43 @@ export class CommandController {
     await this.installerHandler.updatePackage(packageName);
   }
 
-  async rollbackPackage(packageName: string, version: string): Promise<void> {
-    await this.installerHandler.rollbackPackage(packageName, version);
+  async rollbackPackage(
+    packageName: string,
+    version: string,
+    dueToIncompatibility?: boolean
+  ): Promise<void> {
+    const hadConflict = this.isIncompatibilityRollback(packageName);
+    const ok = await this.installerHandler.rollbackPackage(packageName, version);
+    if (!ok) {
+      return;
+    }
+
+    const shouldAutoIgnore = dueToIncompatibility === true || hadConflict;
+    if (!shouldAutoIgnore) {
+      return;
+    }
+
+    const ignoredVersion = await this.visualizerHandler.autoIgnoreLatestPypiUpdate(packageName);
+    if (ignoredVersion) {
+      const lang = vscode.workspace
+        .getConfiguration('pythonPackageVisualizer')
+        .get<string>('language', 'en');
+      const isIt = lang === 'it';
+      void vscode.window.showInformationMessage(
+        isIt
+          ? `Python Packages: aggiornamento PyPI ${ignoredVersion} ignorato automaticamente dopo il ripristino per incompatibilità`
+          : `Python Packages: PyPI update ${ignoredVersion} auto-ignored after incompatibility rollback`
+      );
+      await this.refreshVisualizer();
+    }
+  }
+
+  private isIncompatibilityRollback(packageName: string): boolean {
+    const norm = packageName.toLowerCase().replace(/[-_.]+/g, '-');
+    const pkg = this.visualizerHandler.getLastPackages().find(
+      p => p.name.toLowerCase().replace(/[-_.]+/g, '-') === norm
+    );
+    return Boolean(pkg?.hasConflict);
   }
 
   async updateAllPackages(names: string[]): Promise<void> {
@@ -480,7 +526,7 @@ export class CommandController {
 
   /** Captures the current environment before a manual package update. */
   private async snapshotBeforeUpdate(label: string): Promise<void> {
-    const root = this.getWorkspaceRoot();
+    const root = this.getActiveProjectRoot();
     if (!root) {
       return;
     }
@@ -502,14 +548,33 @@ export class CommandController {
   }
 
   async handleVenvHealthRequest(): Promise<void> {
-    const root = this.getWorkspaceRoot();
+    const root = this.scanner.resolveHealthCheckCwd();
     if (!root) { return; }
     try {
       const report = await this.venvHealthChecker.checkHealth(root);
-      this.panel.sendVenvHealth(report);
+      const availableProjects = this.scanner.listWorkspaceVenvProjects();
+      const activeProject = availableProjects.find(project => project.root === root)
+        ?? availableProjects[0]
+        ?? { root, name: path.basename(root), pythonPath: this.scanner.resolvePythonPath() };
+      this.panel.sendVenvHealth({
+        report,
+        activeProject: { root: activeProject.root, name: activeProject.name },
+        availableProjects,
+      });
     } catch {
       // Non-blocking: silently ignore venv health failures
     }
+  }
+
+  async handleSelectActiveVenvProject(root: string): Promise<void> {
+    const projects = this.scanner.listWorkspaceVenvProjects();
+    const match = findMatchingWorkspaceRoot(root, projects.map(project => project.root));
+    if (!match) {
+      return;
+    }
+    await setSelectedVenvRoot(this.context, match);
+    await this.handleVenvHealthRequest();
+    await this.refreshVisualizer();
   }
 
   async handleUpdatePip(): Promise<void> {
@@ -518,6 +583,10 @@ export class CommandController {
     } finally {
       void this.handleVenvHealthRequest();
     }
+  }
+
+  private getActiveProjectRoot(): string | null {
+    return this.scanner.getActiveProjectRoot();
   }
 
   private getWorkspaceRoot(): string | null {

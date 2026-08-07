@@ -15,6 +15,7 @@ window.buildTableRowHtml = function (pkg, helpers) {
   } = helpers;
 
   const canUpdate = pkg.status === 'update-available';
+  const isUpdateIgnored = pkg.status === 'update-ignored';
   const isConflictBlocked = pkg.status === 'conflict-blocked' || pkg.updateBlockedByConflict;
   const isMajor = isMajorJump(pkg.installedVersion, pkg.latestVersion);
   const isLocked = window.safeMode && isMajor;
@@ -30,12 +31,16 @@ window.buildTableRowHtml = function (pkg, helpers) {
   if (canUpdate) {
     if (isLocked) {
       actionBtnHtml += `<button class="action-btn update-btn" disabled title="${window.t('tag.majorLockTitle')}">${window.t('tag.majorLock')}</button>`;
+      actionBtnHtml += ` <button class="action-btn ignore-update-btn" data-name="${esc(pkg.name)}" data-latest="${esc(pkg.latestVersion)}" title="${window.t('btn.ignoreUpdateTitle')}">${window.t('btn.ignoreUpdate')}</button>`;
     } else {
       actionBtnHtml += `<button class="action-btn update-btn" data-name="${esc(pkg.name)}">${window.t('btn.update')}</button>`;
+      actionBtnHtml += ` <button class="action-btn ignore-update-btn" data-name="${esc(pkg.name)}" data-latest="${esc(pkg.latestVersion)}" title="${window.t('btn.ignoreUpdateTitle')}">${window.t('btn.ignoreUpdate')}</button>`;
     }
+  } else if (isUpdateIgnored) {
+    actionBtnHtml += `<button class="action-btn unignore-update-btn" data-name="${esc(pkg.name)}" title="${window.t('btn.unignoreUpdateTitle')}">${window.t('btn.unignoreUpdate')}</button>`;
   } else if (isConflictBlocked) {
     if (pkg.previousVersion) {
-      actionBtnHtml += `<button class="action-btn rollback-btn" data-name="${esc(pkg.name)}" data-version="${esc(pkg.previousVersion)}" title="${window.t('btn.revertPreviousTitle')}">${window.t('btn.revertPrevious')}</button> `;
+      actionBtnHtml += `<button class="action-btn rollback-btn" data-name="${esc(pkg.name)}" data-version="${esc(pkg.previousVersion)}" data-due-incompat="1" title="${window.t('btn.revertPreviousTitle')}">${window.t('btn.revertPrevious')}</button> `;
     }
     if (pkg.latestVersion && pkg.latestVersion !== 'unknown') {
       actionBtnHtml += `<button class="action-btn force-update-btn" data-name="${esc(pkg.name)}" title="${window.t('btn.forceUpdateTitle')}">${window.t('btn.forceUpdate')}</button>`;

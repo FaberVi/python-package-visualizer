@@ -25,12 +25,22 @@ import {
   parsePipShowOutput,
 } from './pipShow.js';
 import {
+  findVenvOwningRoot as findVenvOwningRootFn,
+  getWorkspaceFolderPaths,
+  isPythonInAnyWorkspaceVenv,
   isPythonInWorkspaceVenv,
+  listWorkspaceVenvProjects as listWorkspaceVenvProjectsFn,
   resolveForWorkspace as findWorkspacePython,
+  resolveHealthCheckCwd as resolveHealthCheckCwdFn,
   resolvePythonPath as resolvePythonPathFn,
   willUseGlobalPython as willUseGlobalPythonFn,
   expandConfigPath as expandConfigPathFn,
+  type WorkspaceVenvProject,
 } from './pythonResolver.js';
+import {
+  findMatchingWorkspaceRoot,
+  getSelectedVenvRoot,
+} from '../../services/activeVenvRoot.js';
 
 export class PackageScanner {
   private uvPathPromise: Promise<string | null> | undefined = undefined;
@@ -94,7 +104,7 @@ export class PackageScanner {
       return { packages: [], transitivePackages: [] };
     }
 
-    const resolvePython = () => this.resolvePythonPath();
+    const resolvePython = () => this.resolvePythonForWorkspace(workspaceRoot);
     const installed = await getPipInstalledVersions(
       workspaceRoot,
       cwd => this.resolveUvPath(cwd),
@@ -165,8 +175,37 @@ export class PackageScanner {
     return parsePipfile(filePath, this.logger);
   }
 
+  resolvePythonForWorkspace(workspaceRoot: string): string {
+    const rootPython = findWorkspacePython(workspaceRoot);
+    return rootPython ?? this.resolvePythonPath();
+  }
+
   resolvePythonPath(): string {
-    return resolvePythonPathFn(this.logger);
+    return resolvePythonPathFn(this.logger, () => this.getPreferredVenvRoot());
+  }
+
+  getPreferredVenvRoot(): string | null {
+    if (!this.context) {
+      return null;
+    }
+    const roots = getWorkspaceFolderPaths();
+    const selected = getSelectedVenvRoot(this.context);
+    if (!selected) {
+      return null;
+    }
+    const matched = findMatchingWorkspaceRoot(selected, roots);
+    if (!matched || !findWorkspacePython(matched)) {
+      return null;
+    }
+    return matched;
+  }
+
+  listWorkspaceVenvProjects(): WorkspaceVenvProject[] {
+    return listWorkspaceVenvProjectsFn();
+  }
+
+  getActiveProjectRoot(): string | null {
+    return this.resolveHealthCheckCwd() ?? getWorkspaceFolderPaths()[0] ?? null;
   }
 
   resolveForWorkspace(root: string): string | null {
@@ -181,8 +220,23 @@ export class PackageScanner {
     return isPythonInWorkspaceVenv(pythonPath, root);
   }
 
-  willUseGlobalPython(root: string): boolean {
-    return willUseGlobalPythonFn(() => this.resolvePythonPath(), root);
+  isPythonInAnyWorkspaceVenv(pythonPath: string): boolean {
+    return isPythonInAnyWorkspaceVenv(pythonPath, getWorkspaceFolderPaths());
+  }
+
+  findVenvOwningRoot(pythonPath: string): string | null {
+    return findVenvOwningRootFn(pythonPath, getWorkspaceFolderPaths());
+  }
+
+  resolveHealthCheckCwd(): string | null {
+    return resolveHealthCheckCwdFn(
+      () => this.resolvePythonPath(),
+      () => this.getPreferredVenvRoot()
+    );
+  }
+
+  willUseGlobalPython(_root?: string): boolean {
+    return willUseGlobalPythonFn(() => this.resolvePythonPath());
   }
 
   normalizeName(name: string): string {

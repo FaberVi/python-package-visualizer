@@ -5,6 +5,26 @@ All notable changes to **Python Package Visualizer (Community)** are documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.6] — 2026-08-07
+
+### Added
+
+- Multi-root workspaces: detect `.venv` across all workspace folders, not only the first root
+- Environment tab: **Active project** selector when multiple workspace folders have a virtual environment (persisted choice)
+
+### Changed
+
+- Python resolution priority: manual project selection → active editor folder → first folder with venv
+- Package scan uses each folder's local venv for installed-version lookup when present
+- CodeLens and import hover use the document's workspace folder for conflicts and ignored updates
+- Pre-update snapshots and pip operations follow the active project root
+
+### Fixed
+
+- Environment tab showed "System Python" when the venv lived on a secondary workspace root
+- Race when switching active project in the Environment tab could refresh with stale health data
+- `willUseGlobalPython` false positives when the selected venv belonged to another workspace root
+
 ## [3.2.5] — 2026-07-19
 
 ### Added

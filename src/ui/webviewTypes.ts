@@ -8,6 +8,20 @@ import type { VenvHealthReport } from '../services/venvHealthChecker.js';
 
 export type { VenvHealthReport };
 
+/** Workspace folder with a detectable on-disk virtual environment. */
+export interface WorkspaceVenvProjectInfo {
+  root: string;
+  name: string;
+  pythonPath: string;
+}
+
+/** Environment health payload sent to the webview. */
+export interface VenvHealthPayload {
+  report: VenvHealthReport;
+  activeProject: { root: string; name: string };
+  availableProjects: WorkspaceVenvProjectInfo[];
+}
+
 /** A single entry in the version history timeline display. */
 export interface HistoryDisplayEntry {
   packageName: string;
@@ -23,7 +37,7 @@ export type WebviewMessage =
   | { type: 'forceUpdatePackage'; name: string }
   | { type: 'updateAllPackages'; names: string[] }
   | { type: 'fixConflict'; requirement: string; packageName: string }
-  | { type: 'rollbackPackage'; name: string; version: string }
+  | { type: 'rollbackPackage'; name: string; version: string; dueToIncompatibility?: boolean }
   | { type: 'refresh' }
   | { type: 'openUrl'; url: string }
   | { type: 'installNew'; name: string; version?: string }
@@ -48,11 +62,14 @@ export type WebviewMessage =
   | { type: 'generateSetupScript'; format: 'bash' | 'powershell' | 'markdown' }
   | { type: 'syncRequirementsToInstalled'; name: string; source: string }
   | { type: 'requestVenvHealth' }
+  | { type: 'selectActiveVenvProject'; root: string }
   | { type: 'updatePip' }
   | { type: 'cursorAnalyzeUnused'; userInitiated: true; packageNames?: string[] }
   | { type: 'bulkRemoveUnusedConfirmed'; userInitiated: true; packages: Array<{ name: string; source: string }> }
   | { type: 'markPackageManuallyUsed'; name: string }
-  | { type: 'unmarkPackageManuallyUsed'; name: string };
+  | { type: 'unmarkPackageManuallyUsed'; name: string }
+  | { type: 'ignorePackageUpdate'; name: string; latestVersion: string }
+  | { type: 'unignorePackageUpdate'; name: string };
 
 /** Aggregated workspace scan statistics sent alongside package data. */
 export interface ScanStats {
@@ -125,6 +142,8 @@ export interface PackageDisplayData {
   }>;
   /** Set when config/script reference search found usage outside imports */
   referenceUsageFound?: boolean;
+  /** PyPI latest version the user chose to ignore (when status is update-ignored). */
+  ignoredUpdateVersion?: string;
 }
 
 /** Minimal package payload for dependency graph lookup (transitive installed packages). */

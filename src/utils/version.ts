@@ -117,3 +117,35 @@ export function hasDrift(specifiedVersion: string, installedVersion: string): bo
   const pinned = extractExactPinnedVersion(specifiedVersion);
   return pinned !== null && !versionsEquivalent(pinned, installedVersion);
 }
+
+/**
+ * Simplified PEP 440-aware version comparator (numeric segments only).
+ * Returns negative if a < b, 0 if equal, positive if a > b.
+ */
+export function compareVersions(a: string, b: string): number {
+  const normalize = (v: string): number[] =>
+    v
+      .replace(/[^0-9.]/g, '')
+      .split('.')
+      .map(Number);
+
+  const pa = normalize(a);
+  const pb = normalize(b);
+  const len = Math.max(pa.length, pb.length);
+
+  for (let i = 0; i < len; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) {
+      return diff;
+    }
+  }
+  return 0;
+}
+
+/** True when an ignored PyPI release still covers the current latest (no new actionable update). */
+export function isUpdateSuppressedByIgnore(ignoredVersion: string, latestVersion: string): boolean {
+  if (!ignoredVersion || !latestVersion || latestVersion === 'unknown') {
+    return false;
+  }
+  return compareVersions(ignoredVersion, latestVersion) >= 0;
+}

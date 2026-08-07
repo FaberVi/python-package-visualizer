@@ -345,7 +345,13 @@ For granular operations, you can run each step individually:
 | `npm run lint` | Run ESLint on `src/` |
 | `npm run pretest` | Compile test files via `tsc` |
 | `npm run test` | Run extension tests with `@vscode/test-electron` |
+| `npm run test:unit` | Fast Mocha unit tests in Node (no Electron) |
+| `npm run test:grep` | Targeted unit test: `npm run test:grep -- "pattern" [file-substring]` |
+| `npm run test:coverage` | Unit tests + c8 report (`coverage/`) |
+| `npm run test:coverage:check` | Coverage with global floor (see `c8.json`) |
 | `npm run package` | Package the extension as `.vsix` via `vsce` |
+
+**Coverage policy (unit-test scope):** lines/statements ≥ **79%**, branches ≥ **72%**, functions ≥ **81%** on modules exercised by `test:unit`. Full-repo line coverage including webview/commands remains lower by design; patch gate (`node scripts/check-patch-coverage.mjs`) enforces **70%** on newly added `src/` files that are unit-tested. Local full check: `.\scripts\diff-coverage.ps1`.
 
 ### Typical Development Workflow
 

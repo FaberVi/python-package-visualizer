@@ -3,16 +3,50 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { PackageScanner, sanitizeRequiresList } from '../../src/modules/packageScanner.js';
+import { setSelectedVenvRoot } from '../../src/services/activeVenvRoot.js';
+import { stubLogger } from '../helpers/stubLogger.js';
+
+type VscodeTestApi = {
+  __test: {
+    reset: () => void;
+    setWorkspaceFolders: (folders: Array<{ uri: { fsPath: string }; name?: string }> | null) => void;
+    makeFolder: (fsPath: string, name?: string) => { uri: { fsPath: string }; name?: string };
+  };
+};
+
+function getVscodeTestApi(): VscodeTestApi['__test'] {
+  return (require('vscode') as VscodeTestApi).__test;
+}
+
+function makeStubContext(): import('vscode').ExtensionContext {
+  return {
+    workspaceState: {
+      _data: {} as Record<string, unknown>,
+      get<T>(key: string): T | undefined {
+        return this._data[key] as T | undefined;
+      },
+      async update(key: string, value: unknown): Promise<void> {
+        if (value === undefined) {
+          delete this._data[key];
+          return;
+        }
+        this._data[key] = value;
+      },
+    },
+  } as unknown as import('vscode').ExtensionContext;
+}
+
+function createVenvPython(root: string): string {
+  const isWindows = process.platform === 'win32';
+  const pythonPath = isWindows
+    ? path.join(root, '.venv', 'Scripts', 'python.exe')
+    : path.join(root, '.venv', 'bin', 'python');
+  fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+  fs.writeFileSync(pythonPath, '');
+  return pythonPath;
+}
 
 // Minimal logger stub
-const stubLogger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-  show: () => {},
-} as unknown as import('../../src/utils/logger.js').Logger;
-
 suite('PackageScanner', () => {
   let tmpDir: string;
   let scanner: PackageScanner;
@@ -294,5 +328,43 @@ suite('PackageScanner', () => {
 
     assert.deepStrictEqual(map.get('isort')?.requires, []);
     assert.deepStrictEqual(map.get('pyjwt')?.requires, []);
+  });
+
+  test('resolvePythonForWorkspace prefers local venv over globally selected project', async () => {
+    const rootA = fs.mkdtempSync(path.join(os.tmpdir(), 'ppv-scan-a-'));
+    const rootB = fs.mkdtempSync(path.join(os.tmpdir(), 'ppv-scan-b-'));
+    const venvA = createVenvPython(rootA);
+    createVenvPython(rootB);
+    const context = makeStubContext();
+    await setSelectedVenvRoot(context, rootB);
+    const vscodeTest = getVscodeTestApi();
+    vscodeTest.setWorkspaceFolders([
+      vscodeTest.makeFolder(rootA, 'project-a'),
+      vscodeTest.makeFolder(rootB, 'project-b'),
+    ]);
+    const contextualScanner = new PackageScanner(stubLogger, context);
+
+    try {
+      assert.strictEqual(contextualScanner.resolvePythonForWorkspace(rootA), venvA);
+      assert.strictEqual(contextualScanner.resolvePythonPath(), contextualScanner.resolveForWorkspace(rootB));
+    } finally {
+      vscodeTest.reset();
+      fs.rmSync(rootA, { recursive: true, force: true });
+      fs.rmSync(rootB, { recursive: true, force: true });
+    }
+  });
+
+  test('getPreferredVenvRoot ignores stale selection outside workspace', async () => {
+    const context = makeStubContext();
+    await setSelectedVenvRoot(context, 'C:\\removed\\project');
+    const vscodeTest = getVscodeTestApi();
+    vscodeTest.setWorkspaceFolders([vscodeTest.makeFolder(tmpDir)]);
+    const contextualScanner = new PackageScanner(stubLogger, context);
+
+    try {
+      assert.strictEqual(contextualScanner.getPreferredVenvRoot(), null);
+    } finally {
+      vscodeTest.reset();
+    }
   });
 });

@@ -81,7 +81,7 @@ window.renderConflicts = function () {
     }
     if (pkgInfo?.updateBlockedByConflict) {
       if (pkgInfo.previousVersion) {
-        extraParts.push(`<button class="action-btn rollback-btn" data-name="${window.esc(pkgInfo.name)}" data-version="${window.esc(pkgInfo.previousVersion)}">${window.t('btn.revertPrevious')}</button>`);
+        extraParts.push(`<button class="action-btn rollback-btn" data-name="${window.esc(pkgInfo.name)}" data-version="${window.esc(pkgInfo.previousVersion)}" data-due-incompat="1">${window.t('btn.revertPrevious')}</button>`);
       }
       if (pkgInfo.latestVersion && pkgInfo.latestVersion !== 'unknown') {
         extraParts.push(`<button class="action-btn force-update-btn" data-name="${window.esc(pkgInfo.name)}">${window.t('btn.forceUpdate')}</button>`);
@@ -136,7 +136,12 @@ window.renderConflicts = function () {
       if (name && version) {
         window.showVersionInstallConfirmDialog?.(name, version, () => {
           btn.disabled = true;
-          window.vscode.postMessage({ type: 'rollbackPackage', name, version });
+          window.vscode.postMessage({
+            type: 'rollbackPackage',
+            name,
+            version,
+            dueToIncompatibility: true,
+          });
         });
       }
     });

@@ -32,7 +32,12 @@ window.bindTableRowEvents = function (tbody) {
         window.showVersionInstallConfirmDialog?.(name, version, () => {
           btn.disabled = true;
           btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.reverting')}`;
-          window.vscode.postMessage({ type: 'rollbackPackage', name, version });
+          window.vscode.postMessage({
+            type: 'rollbackPackage',
+            name,
+            version,
+            dueToIncompatibility: btn.dataset.dueIncompat === '1',
+          });
         });
       }
     });
@@ -59,6 +64,29 @@ window.bindTableRowEvents = function (tbody) {
         btn.disabled = true;
         btn.innerHTML = `<span class="btn-spinner"></span>${window.t('btn.updating')}`;
         window.vscode.postMessage({ type: 'updatePackage', name });
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.ignore-update-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const latestVersion = btn.dataset.latest;
+      if (name && latestVersion) {
+        btn.disabled = true;
+        window.vscode.postMessage({ type: 'ignorePackageUpdate', name, latestVersion });
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.unignore-update-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (name) {
+        btn.disabled = true;
+        window.vscode.postMessage({ type: 'unignorePackageUpdate', name });
       }
     });
   });

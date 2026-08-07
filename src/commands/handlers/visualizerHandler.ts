@@ -31,6 +31,11 @@ import {
   markPackageManuallyUsed,
   unmarkPackageManuallyUsed,
 } from '../../services/manualUsedPackages.js';
+import {
+  getIgnoredUpdates,
+  ignorePackageUpdate as persistIgnoredUpdate,
+  unignorePackageUpdate as persistUnignoredUpdate,
+} from '../../services/ignoredUpdates.js';
 
 /**
  * Handles core workspace package scanning, update checks, auto checks,
@@ -44,6 +49,7 @@ export class VisualizerHandler {
   private lastFilesScanned = 0;
   private lastUnusedPackages: Map<string, UnusedPackageInfo> | undefined;
   private scanGeneration = 0;
+  private codeLensRefresh?: () => void;
   private readonly importScanner: ImportScanner;
   private readonly referenceSearch = new UsageReferenceSearch();
   private readonly pypiTopLevelCache: PypiTopLevelCache;
@@ -62,6 +68,14 @@ export class VisualizerHandler {
   ) {
     this.importScanner = new ImportScanner(logger);
     this.pypiTopLevelCache = new PypiTopLevelCache(context);
+  }
+
+  setCodeLensRefresh(fn: () => void): void {
+    this.codeLensRefresh = fn;
+  }
+
+  private refreshCodeLenses(): void {
+    this.codeLensRefresh?.();
   }
 
   getLastPackages(): ScannedPackage[] {
@@ -93,7 +107,8 @@ export class VisualizerHandler {
       root,
       this.history,
       this.lastUnusedPackages,
-      getManualUsedPackages(this.context, root)
+      getManualUsedPackages(this.context, root),
+      getIgnoredUpdates(this.context, root)
     );
     return {
       packages,
@@ -108,6 +123,7 @@ export class VisualizerHandler {
       workspaceRoot: root,
       history: this.history,
       manualUsedPackages: getManualUsedPackages(this.context, root),
+      ignoredUpdates: getIgnoredUpdates(this.context, root),
     };
   }
 
@@ -119,6 +135,64 @@ export class VisualizerHandler {
     }
     await markPackageManuallyUsed(this.context, root, packageName);
     await this.showVisualizer();
+  }
+
+  /** Ignore the current PyPI update for a package until a newer release appears. */
+  async ignorePackageUpdate(packageName: string, latestVersion: string): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root || !packageName || !latestVersion) {
+      return;
+    }
+    await persistIgnoredUpdate(this.context, root, packageName, latestVersion);
+    this.refreshCodeLenses();
+    await this.showVisualizer();
+  }
+
+  /** Clear an ignored update so the package shows as update-available again. */
+  async unignorePackageUpdate(packageName: string): Promise<void> {
+    const root = this.getWorkspaceRoot();
+    if (!root || !packageName) {
+      return;
+    }
+    await persistUnignoredUpdate(this.context, root, packageName);
+    this.refreshCodeLenses();
+    await this.showVisualizer();
+  }
+
+  /**
+   * After an incompatibility rollback, ignore the current PyPI latest so the
+   * package does not reappear as update-available until a newer release ships.
+   */
+  async autoIgnoreLatestPypiUpdate(packageName: string): Promise<string | undefined> {
+    const root = this.getWorkspaceRoot();
+    if (!root || !packageName) {
+      return undefined;
+    }
+
+    const installed =
+      this.lastPackages.find(p => p.name.toLowerCase() === packageName.toLowerCase())?.installedVersion ??
+      '';
+    const cached = this.lastCheckResults.find(
+      r => r.packageName.toLowerCase() === packageName.toLowerCase()
+    );
+    let latestVersion = cached?.latestVersion;
+
+    if (!latestVersion || latestVersion === 'unknown') {
+      try {
+        const result = await this.checker.checkPackage(packageName, installed);
+        latestVersion = result.latestVersion;
+      } catch {
+        return undefined;
+      }
+    }
+
+    if (!latestVersion || latestVersion === 'unknown') {
+      return undefined;
+    }
+
+    await persistIgnoredUpdate(this.context, root, packageName, latestVersion);
+    this.refreshCodeLenses();
+    return latestVersion;
   }
 
   /** Clear a manual used confirmation so the package can reappear as unused. */
@@ -331,14 +405,16 @@ export class VisualizerHandler {
           root,
           this.history,
           unusedPackages,
-          getManualUsedPackages(this.context, root)
+          getManualUsedPackages(this.context, root),
+          getIgnoredUpdates(this.context, root)
         );
         this.sidebar.sendPackages(displayData, scanStats, 'init');
       }
 
       this.updateStatusBar(checkResults, scanned);
 
-      const outdated = countActionableUpdates(scanned, checkResults);
+      const ignored = root ? getIgnoredUpdates(this.context, root) : undefined;
+      const outdated = countActionableUpdates(scanned, checkResults, ignored);
       if (outdated > 0) {
         this.logger.info(`${outdated} package(s) have updates available`);
       }
@@ -413,8 +489,10 @@ export class VisualizerHandler {
     if (!this.statusBar) {
       return;
     }
+    const root = this.getWorkspaceRoot();
+    const ignored = root ? getIgnoredUpdates(this.context, root) : undefined;
     const outdated = scanned
-      ? countActionableUpdates(scanned, checkResults)
+      ? countActionableUpdates(scanned, checkResults, ignored)
       : checkResults.filter(r => r.status === 'update-available').length;
     const vulnerable = checkResults.filter(r => r.vulnerabilities && r.vulnerabilities.length > 0).length;
     this.statusBar.update(outdated, vulnerable, checkResults.length);
