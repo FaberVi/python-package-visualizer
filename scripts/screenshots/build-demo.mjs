@@ -23,12 +23,15 @@ const CSS_FILES = [
 
 const JS_ASSETS = [
   ['js', 'state.js'], ['js', 'i18n', 'en.js'], ['js', 'i18n', 'it.js'], ['js', 'i18n.js'],
-  ['js', 'utils.js'], ['js', 'filters.js'],
-  ['js', 'table', 'rowBuilder.js'], ['js', 'table', 'events.js'], ['js', 'table', 'dialogs.js'],
+  ['js', 'htmlSafety.js'], ['js', 'versionDisplay.js'], ['js', 'packageMetrics.js'], ['js', 'filters.js'],
+  ['js', 'table', 'rowBuilder.js'], ['js', 'table', 'events.js'],
+  ['js', 'table', 'dialogs', 'unusedRemoveConfirm.js'], ['js', 'table', 'dialogs.js'],
   ['js', 'table', 'bulk.js'], ['js', 'table.js'], ['js', 'modal.js'], ['js', 'tour.js'],
-  ['js', 'graph.js'], ['js', 'tabs', 'licenses.js'], ['js', 'tabs', 'snapshots.js'],
+  ['js', 'graph', 'treeData.js'], ['js', 'graph.js'], ['js', 'tabs', 'licenses.js'], ['js', 'tabs', 'snapshots.js'],
   ['js', 'tabs', 'dashboard.js'], ['js', 'tabs', 'performance.js'], ['js', 'tabs', 'history.js'],
-  ['js', 'tabs', 'unused.js'], ['js', 'tabs', 'conflicts.js'], ['js', 'tabs', 'venv-health.js'],
+  ['js', 'tabs', 'unused', 'confidenceRows.js'], ['js', 'tabs', 'unused', 'unusedBindings.js'],
+  ['js', 'tabs', 'unused.js'], ['js', 'tabs', 'conflicts.js'],
+  ['js', 'tabs', 'venv-health', 'installedPackagesPanel.js'], ['js', 'tabs', 'venv-health.js'],
   ['js', 'tabs.js'], ['js', 'detail.js'],
   ['main', 'messageRouter.js'], ['main', 'domSetup.js'], ['main.js'],
 ];

@@ -1,13 +1,31 @@
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
-import * as path from 'path';
-import { Logger } from '../../utils/logger.js';
-import { hasDrift, extractExactPinnedVersion, isExactPin } from '../../utils/version.js';
+import { isExactPin, versionsEquivalent } from '../../utils/version.js';
 import { PackageScanner } from '../../modules/packageScanner.js';
 import { VersionHistoryCache } from '../../services/versionHistoryCache.js';
 import { RequirementsSync } from '../../modules/requirementsSync.js';
 import { WebviewPanel } from '../../ui/webviewPanel.js';
-import { withUvGlobalArgs } from '../../utils/uvSpawn.js';
+import { Logger } from '../../utils/logger.js';
+import {
+  buildInstallCmd as buildInstallCmdFn,
+  buildInstallSpawnArgs as buildInstallSpawnArgsFn,
+  buildUninstallSpawnArgs as buildUninstallSpawnArgsFn,
+  confirmInstallTarget,
+  runInstallTracked as runInstallTrackedFn,
+  runNewPackageInstall,
+  runPip as runPipFn,
+  updatePip as updatePipFn,
+  type PackageInstallerProcessContext,
+} from './packageInstaller/pipProcess.js';
+import {
+  bulkUninstallPackages as bulkUninstallPackagesFn,
+  installAllPackages as installAllPackagesFn,
+  updateAllPackages as updateAllPackagesFn,
+} from './packageInstaller/bulkOperations.js';
+
+export {
+  packagesEligibleForPostBulkReconcile,
+  type PostBulkReconcilePackage,
+} from './packageInstaller/postBulkReconcile.js';
 
 /**
  * Handles package installation, rollback, bulk upgrade, and execution tracking
@@ -23,6 +41,26 @@ export class PackageInstaller {
     private readonly getWorkspaceRoot: () => string | null,
     private readonly refreshCallback: () => Promise<void>
   ) {}
+
+  private getProcessCtx(): PackageInstallerProcessContext {
+    return {
+      scanner: this.scanner,
+      history: this.history,
+      reqSync: this.reqSync,
+      panel: this.panel,
+      logger: this.logger,
+      getWorkspaceRoot: this.getWorkspaceRoot,
+      refreshCallback: this.refreshCallback,
+      syncExactPinOnly: (
+        root,
+        packageName,
+        version,
+        source,
+        specifiedVersion,
+        contextLabel
+      ) => this.syncExactPinOnly(root, packageName, version, source, specifiedVersion, contextLabel),
+    };
+  }
 
   /**
    * Syncs the dependency file only when the current specifier is an exact pin (`==`).
@@ -64,7 +102,7 @@ export class PackageInstaller {
     if (!root || !spec.trim()) {
       return;
     }
-    if (!(await this.confirmInstallTarget(root))) {
+    if (!(await confirmInstallTarget(this.getProcessCtx(), root))) {
       return;
     }
 
@@ -106,13 +144,13 @@ export class PackageInstaller {
    * Spawns an upgrade command for a single package and synchronizes the pinned
    * version inside the project requirements declarations.
    */
-  async updatePackage(packageName: string): Promise<void> {
+  async updatePackage(packageName: string): Promise<boolean> {
     const root = this.getWorkspaceRoot();
     if (!root) {
-      return;
+      return false;
     }
-    if (!(await this.confirmInstallTarget(root))) {
-      return;
+    if (!(await confirmInstallTarget(this.getProcessCtx(), root))) {
+      return false;
     }
 
     const { exe, args } = await this.buildInstallSpawnArgs([packageName, '--upgrade'], root);
@@ -121,7 +159,6 @@ export class PackageInstaller {
     try {
       const installTime = await this.runInstallTracked(exe, args, root, packageName);
 
-      // Record in history and sync requirements files
       const scanned = (await this.scanner.scanWorkspace(root)).packages;
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg?.installedVersion) {
@@ -141,12 +178,14 @@ export class PackageInstaller {
       );
 
       await this.refreshCallback();
+      return true;
     } catch (err) {
       this.logger.error(`Update failed for ${packageName}: ${String(err)}`);
       void vscode.window.showErrorMessage(
         `Python Packages: Failed to update ${packageName}. See Output panel for details.`
       );
       this.logger.show();
+      return false;
     }
   }
 
@@ -159,7 +198,7 @@ export class PackageInstaller {
     if (!root) {
       return false;
     }
-    if (!(await this.confirmInstallTarget(root))) {
+    if (!(await confirmInstallTarget(this.getProcessCtx(), root))) {
       return false;
     }
 
@@ -182,7 +221,6 @@ export class PackageInstaller {
       const installTime = await this.runInstallTracked(exe, args, root, packageName);
       this.history.recordVersion(root, packageName, finalVersion, 'pip-rollback', installTime);
 
-      // Sync requirements file with new version
       const scanned = (await this.scanner.scanWorkspace(root)).packages;
       const pkg = scanned.find(p => p.name === packageName);
       if (pkg) {
@@ -213,159 +251,88 @@ export class PackageInstaller {
   }
 
   /**
-   * Installs and upgrades multiple selected packages sequentially, showing a unified
-   * progress bar inside the editor notifications.
+   * Pins a package to an explicit version: install if needed, always rewrite
+   * the dependency file to ==version. Persistence of Ignore/Pinned tag is
+   * handled by the caller (no ExtensionContext here).
    */
-  async updateAllPackages(names: string[]): Promise<void> {
+  async pinPackageToVersion(
+    packageName: string,
+    version: string,
+    sourceFile: string
+  ): Promise<boolean> {
     const root = this.getWorkspaceRoot();
-    if (!root || !names.length) {
-      return;
-    }
-    if (!(await this.confirmInstallTarget(root))) {
-      return;
+    if (!root || !packageName.trim() || !version.trim()) {
+      return false;
     }
 
-    let succeeded = 0;
-    let failed = 0;
-
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Python Packages: Updating ${names.length} packages…`,
-        cancellable: false,
-      },
-      async progress => {
-        for (let i = 0; i < names.length; i++) {
-          const name = names[i];
-          progress.report({
-            message: `(${i + 1}/${names.length}) ${name}`,
-            increment: 100 / names.length,
-          });
-          try {
-            const { exe, args } = await this.buildInstallSpawnArgs([name, '--upgrade'], root);
-            const installTime = await this.runInstallTracked(exe, args, root, name);
-
-            const scanned = (await this.scanner.scanWorkspace(root)).packages;
-            const pkg = scanned.find(p => p.name === name);
-            if (pkg?.installedVersion) {
-              this.history.recordVersion(root, name, pkg.installedVersion, 'pip-install', installTime);
-              await this.syncExactPinOnly(
-                root,
-                name,
-                pkg.installedVersion,
-                pkg.source,
-                pkg.specifiedVersion,
-                'Post-bulk-update'
-              );
-            }
-
-            succeeded++;
-          } catch (err) {
-            failed++;
-            this.logger.error(`Update failed for ${name}: ${String(err)}`);
-          }
-        }
-      }
+    const scannedBefore = (await this.scanner.scanWorkspace(root)).packages;
+    const existing = scannedBefore.find(
+      p => p.name.toLowerCase() === packageName.toLowerCase()
     );
+    const needsInstall = !existing?.installedVersion
+      || !versionsEquivalent(existing.installedVersion, version);
 
-    // Reconcile exact pins still out of sync (wrong source file, pruned includes, etc.)
-    const finalScan = (await this.scanner.scanWorkspace(root)).packages;
-    for (const pkg of finalScan) {
-      if (
-        pkg.installedVersion &&
-        pkg.specifiedVersion &&
-        pkg.source &&
-        hasDrift(pkg.specifiedVersion, pkg.installedVersion)
-      ) {
-        const syncResult = await this.reqSync.syncVersionWithFallback(
-          root,
-          pkg.name,
-          pkg.installedVersion,
-          pkg.source
+    if (needsInstall) {
+      if (!(await confirmInstallTarget(this.getProcessCtx(), root))) {
+        return false;
+      }
+      const { exe, args } = await this.buildInstallSpawnArgs(
+        [`${packageName}==${version}`],
+        root
+      );
+      this.logger.info(`Pinning: ${exe} ${args.join(' ')}`);
+      try {
+        const installTime = await this.runInstallTracked(exe, args, root, packageName);
+        this.history.recordVersion(root, packageName, version, 'pip-install', installTime);
+      } catch (err) {
+        this.logger.error(`Pin install failed for ${packageName}: ${String(err)}`);
+        void vscode.window.showErrorMessage(
+          `Python Packages: Failed to pin ${packageName} to ${version}. See Output panel for details.`
         );
-        if (syncResult.outcome !== 'synced') {
-          this.logger.warn(`Post-bulk reconcile failed for ${pkg.name}: ${syncResult.outcome}`);
-        }
+        this.logger.show();
+        return false;
       }
     }
 
-    const msg = failed === 0
-      ? `✅ Updated ${succeeded} package${succeeded !== 1 ? 's' : ''} successfully.`
-      : `⚠️ ${succeeded} updated, ${failed} failed. See Output panel for details.`;
-
-    void vscode.window.showInformationMessage(`Python Packages: ${msg}`);
-    await this.refreshCallback();
-  }
-
-  /**
-   * Installs multiple missing packages sequentially, using pinned versions from
-   * dependency files when available.
-   */
-  async installAllPackages(names: string[]): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root || !names.length) {
-      return;
-    }
-    if (!(await this.confirmInstallTarget(root))) {
-      return;
-    }
-
-    const scanned = (await this.scanner.scanWorkspace(root)).packages;
-    let succeeded = 0;
-    let failed = 0;
-
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Python Packages: Installing ${names.length} packages…`,
-        cancellable: false,
-      },
-      async progress => {
-        for (let i = 0; i < names.length; i++) {
-          const name = names[i];
-          progress.report({
-            message: `(${i + 1}/${names.length}) ${name}`,
-            increment: 100 / names.length,
-          });
-          try {
-            const pkg = scanned.find(p => p.name === name);
-            // Only honor exact pins (==) when installing; ranges stay flexible for the resolver.
-            const version = pkg?.specifiedVersion
-              ? extractExactPinnedVersion(pkg.specifiedVersion) ?? undefined
-              : undefined;
-            await this.runNewPackageInstall(name, version, root);
-            succeeded++;
-          } catch (err) {
-            failed++;
-            this.logger.error(`Install failed for ${name}: ${String(err)}`);
-          }
-        }
-      }
+    const source = sourceFile || existing?.source || '';
+    const syncResult = await this.reqSync.syncVersionWithFallback(
+      root,
+      packageName,
+      version,
+      source
     );
-
-    const msg = failed === 0
-      ? `✅ Installed ${succeeded} package${succeeded !== 1 ? 's' : ''} successfully.`
-      : `⚠️ ${succeeded} installed, ${failed} failed. See Output panel for details.`;
-
-    void vscode.window.showInformationMessage(`Python Packages: ${msg}`);
-    await this.refreshCallback();
+    if (syncResult.outcome !== 'synced') {
+      this.logger.warn(`Pin file sync for ${packageName}: ${syncResult.outcome}`);
+      void vscode.window.showWarningMessage(
+        `Python Packages: ${packageName} is at ${version} but the dependency file could not be updated (${syncResult.outcome}).`
+      );
+    } else {
+      void vscode.window.showInformationMessage(
+        `Python Packages: ${packageName} pinned to ==${version} ✅`
+      );
+    }
+    return true;
   }
 
-  /**
-   * Spawns a process to install a brand new dependency in the current environment
-   * and appends it to requirements.txt (if requirements.txt already exists in the project).
-   */
+  async updateAllPackages(names: string[]): Promise<string[]> {
+    return updateAllPackagesFn(this.getProcessCtx(), names);
+  }
+
+  async installAllPackages(names: string[]): Promise<void> {
+    return installAllPackagesFn(this.getProcessCtx(), names);
+  }
+
   async installNewPackage(packageName: string, version?: string): Promise<void> {
     const root = this.getWorkspaceRoot();
     if (!root || !packageName.trim()) {
       return;
     }
-    if (!(await this.confirmInstallTarget(root))) {
+    if (!(await confirmInstallTarget(this.getProcessCtx(), root))) {
       return;
     }
 
     try {
-      await this.runNewPackageInstall(packageName, version, root);
+      await runNewPackageInstall(this.getProcessCtx(), packageName, version, root);
       void vscode.window.showInformationMessage(`Python Packages: ${packageName} installed ✅`);
       await this.refreshCallback();
     } catch (err) {
@@ -374,290 +341,36 @@ export class PackageInstaller {
     }
   }
 
-  /**
-   * Runs pip/uv install for a new package and appends to requirements.txt when present.
-   */
-  private async runNewPackageInstall(
-    packageName: string,
-    version: string | undefined,
-    root: string
-  ): Promise<void> {
-    const pkgSpec = version ? `${packageName}==${version}` : packageName;
-    const { exe, args } = await this.buildInstallSpawnArgs([pkgSpec], root);
-    this.logger.info(`Installing new package: ${exe} ${args.join(' ')}`);
-    const installTime = await this.runInstallTracked(exe, args, root, packageName);
-
-    const recordedVersion = version
-      ?? (await this.scanner.scanWorkspace(root)).packages.find(p => p.name === packageName)?.installedVersion;
-    if (recordedVersion) {
-      this.history.recordVersion(root, packageName, recordedVersion, 'pip-install', installTime);
-    }
-
-    const reqFile = vscode.Uri.file(path.join(root, 'requirements.txt'));
-    try {
-      const bytes = await vscode.workspace.fs.readFile(reqFile);
-      const content = Buffer.from(bytes).toString('utf-8');
-      const normPkg = packageName.toLowerCase().replace(/[-_.]+/g, '-');
-      const alreadyListed = content.split('\n').some(line => {
-        const clean = line.split('#')[0].trim().toLowerCase().replace(/[-_.]+/g, '-');
-        return clean.startsWith(normPkg);
-      });
-      if (!alreadyListed) {
-        const entry = version ? `${packageName}==${version}` : packageName;
-        const newContent = content.endsWith('\n') ? content + entry + '\n' : content + '\n' + entry + '\n';
-        await vscode.workspace.fs.writeFile(reqFile, Buffer.from(newContent, 'utf-8'));
-        this.logger.info(`Appended ${entry} to requirements.txt`);
-      }
-    } catch {
-      // requirements.txt does not exist — skip silently
-    }
-  }
-
-  /**
-   * Asks for confirmation when pip would target a non-project interpreter.
-   */
-  private async confirmInstallTarget(root: string): Promise<boolean> {
-    if (!this.scanner.willUseGlobalPython(root)) {
-      return true;
-    }
-
-    const python = this.scanner.resolvePythonPath();
-    const lang = vscode.workspace
-      .getConfiguration('pythonPackageVisualizer')
-      .get<string>('language', 'en');
-    const isIt = lang === 'it';
-    const displayPath = python.length > 72 ? `...${python.slice(-69)}` : python;
-    const message = isIt
-      ? `I pacchetti verranno installati/aggiornati nell'interprete Python globale o esterno:\n${displayPath}\n\nNon verrà usato un virtual environment del progetto (.venv, venv, env). Procedere?`
-      : `Packages will be installed/updated in the global or external Python interpreter:\n${displayPath}\n\nNo project virtual environment (.venv, venv, env) will be used. Continue?`;
-    const proceed = isIt ? 'Procedi' : 'Continue';
-    const cancel = isIt ? 'Annulla' : 'Cancel';
-    const choice = await vscode.window.showWarningMessage(
-      message,
-      { modal: true },
-      proceed,
-      cancel
-    );
-    return choice === proceed;
-  }
-
-  /**
-   * Evaluates the active environment to return the correct install command prefix
-   * for either uv or pip.
-   */
   async buildInstallCmd(packageSpec: string, root: string): Promise<string> {
-    const uvPath = await this.scanner.resolveUvPath(root);
-    if (uvPath) {
-      return `uv --system-certs pip install ${packageSpec}`;
-    }
-    const python = this.scanner.resolvePythonPath();
-    return `"${python}" -m pip install ${packageSpec}`;
+    return buildInstallCmdFn(this.getProcessCtx(), packageSpec, root);
   }
 
-  /**
-   * Evaluates the active environment to return spawn-ready command and list of arguments.
-   */
   async buildInstallSpawnArgs(packageArgs: string[], root: string): Promise<{ exe: string; args: string[] }> {
-    const uvPath = await this.scanner.resolveUvPath(root);
-    if (uvPath) {
-      return { exe: uvPath, args: withUvGlobalArgs(['pip', 'install', ...packageArgs]) };
-    }
-    const python = this.scanner.resolvePythonPath();
-    return { exe: python, args: ['-m', 'pip', 'install', ...packageArgs] };
+    return buildInstallSpawnArgsFn(this.getProcessCtx(), packageArgs, root);
   }
 
-  /** Returns spawn args to uninstall packages from the active environment. */
   async buildUninstallSpawnArgs(
     packageNames: string[],
     root: string
   ): Promise<{ exe: string; args: string[] }> {
-    const uvPath = await this.scanner.resolveUvPath(root);
-    if (uvPath) {
-      return { exe: uvPath, args: withUvGlobalArgs(['pip', 'uninstall', ...packageNames, '-y']) };
-    }
-    const python = this.scanner.resolvePythonPath();
-    return { exe: python, args: ['-m', 'pip', 'uninstall', ...packageNames, '-y'] };
+    return buildUninstallSpawnArgsFn(this.getProcessCtx(), packageNames, root);
   }
 
-  /** Upgrades pip in the workspace interpreter (supports uv and venv). */
   async updatePip(): Promise<boolean> {
-    const root = this.getWorkspaceRoot();
-    if (!root) {
-      return false;
-    }
-    if (!(await this.confirmInstallTarget(root))) {
-      return false;
-    }
-
-    const lang = vscode.workspace
-      .getConfiguration('pythonPackageVisualizer')
-      .get<string>('language', 'en');
-    const isIt = lang === 'it';
-
-    try {
-      const { exe, args } = await this.buildInstallSpawnArgs(['--upgrade', 'pip'], root);
-      this.logger.info(`Updating pip: ${exe} ${args.join(' ')}`);
-      await this.runPipSpawn(exe, args, root);
-      void vscode.window.showInformationMessage(
-        isIt ? 'Python Packages: pip aggiornato ✅' : 'Python Packages: pip updated ✅'
-      );
-      return true;
-    } catch (err) {
-      this.logger.error(`pip update failed: ${String(err)}`);
-      void vscode.window.showErrorMessage(
-        isIt
-          ? `Aggiornamento pip fallito: ${err instanceof Error ? err.message : String(err)}`
-          : `Failed to update pip: ${err instanceof Error ? err.message : String(err)}`
-      );
-      return false;
-    }
+    return updatePipFn(this.getProcessCtx());
   }
 
-  /** Uninstalls packages from the active environment without per-package prompts. */
   async bulkUninstallPackages(
     packageNames: string[]
   ): Promise<{ uninstalled: number; failed: string[] }> {
-    const root = this.getWorkspaceRoot();
-    const unique = [...new Set(packageNames.map(n => n.trim()).filter(Boolean))];
-    if (!root || unique.length === 0) {
-      return { uninstalled: 0, failed: [] };
-    }
-    if (!(await this.confirmInstallTarget(root))) {
-      return { uninstalled: 0, failed: unique };
-    }
-
-    try {
-      const { exe, args } = await this.buildUninstallSpawnArgs(unique, root);
-      this.logger.info(`Bulk uninstall: ${exe} ${args.join(' ')}`);
-      await this.runPipSpawn(exe, args, root);
-      return { uninstalled: unique.length, failed: [] };
-    } catch (err) {
-      this.logger.warn(`Batch uninstall failed, trying individually: ${String(err)}`);
-      let uninstalled = 0;
-      const failed: string[] = [];
-      for (const name of unique) {
-        try {
-          const { exe, args } = await this.buildUninstallSpawnArgs([name], root);
-          await this.runPipSpawn(exe, args, root);
-          uninstalled++;
-        } catch {
-          failed.push(name);
-        }
-      }
-      return { uninstalled, failed };
-    }
+    return bulkUninstallPackagesFn(this.getProcessCtx(), packageNames);
   }
 
-  private runPipSpawn(exe: string, args: string[], cwd: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const child = cp.spawn(exe, args, { cwd, shell: false });
-      let stderr = '';
-
-      child.stderr?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        stderr += text;
-        this.logger.warn(text.trim());
-      });
-      child.stdout?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString().trim();
-        if (text) {
-          this.logger.info(text);
-        }
-      });
-      child.on('close', (code: number | null) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(stderr || `Process exited with code ${String(code)}`));
-        }
-      });
-      child.on('error', reject);
-    });
-  }
-
-  /**
-   * Spawns an installation command and processes the stdout output line-by-line
-   * to send live completion percentages to the webview UI.
-   * @returns Elapsed install time in seconds.
-   */
   runInstallTracked(exe: string, args: string[], cwd: string, packageName: string): Promise<number> {
-    const startedAt = Date.now();
-    return new Promise((resolve, reject) => {
-      const child = cp.spawn(exe, args, { cwd, shell: false });
-
-      const sendProgress = (stage: string, percent: number) => {
-        void this.panel.webview?.postMessage({ type: 'pkgProgress', name: packageName, stage, percent });
-      };
-
-      sendProgress('Starting…', 5);
-
-      let stderr = '';
-      let stdoutBuf = '';
-
-      const processLine = (line: string) => {
-        if (!line.trim()) { return; }
-        this.logger.info(line);
-        const l = line.toLowerCase();
-        if (l.includes('collecting') || l.includes('resolved')) {
-          sendProgress('Collecting…', 15);
-        } else if (l.includes('downloading') || l.includes('prepared')) {
-          const match = line.match(/(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\s*mb/i);
-          if (match) {
-            const pct = Math.round((parseFloat(match[1]) / parseFloat(match[2])) * 50) + 20;
-            sendProgress('Downloading…', Math.min(pct, 70));
-          } else {
-            sendProgress('Downloading…', 40);
-          }
-        } else if (l.includes('installing collected') || l.includes('installed') || l.includes('updated')) {
-          sendProgress('Installing…', 85);
-        } else if (l.includes('successfully installed') || l.includes('requirement already satisfied') || l.includes('audited')) {
-          sendProgress('Done', 100);
-        }
-      };
-
-      child.stdout?.on('data', (chunk: Buffer) => {
-        stdoutBuf += chunk.toString();
-        const lines = stdoutBuf.split('\n');
-        stdoutBuf = lines.pop() ?? '';
-        lines.forEach(processLine);
-      });
-      child.stderr?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        stderr += text;
-        this.logger.warn(text.trim());
-      });
-      child.on('close', (code: number | null) => {
-        if (stdoutBuf) { processLine(stdoutBuf); }
-        const elapsedSec = Math.max(0.01, (Date.now() - startedAt) / 1000);
-        if (code === 0) {
-          sendProgress('Done', 100);
-          resolve(elapsedSec);
-        } else {
-          reject(new Error(stderr || `Process exited with code ${String(code)}`));
-        }
-      });
-      child.on('error', reject);
-    });
+    return runInstallTrackedFn(this.getProcessCtx(), exe, args, cwd, packageName);
   }
 
-  /**
-   * Executes a command via child_process exec with timeout support.
-   */
   runPip(cmd: string, cwd: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      cp.exec(cmd, { cwd, timeout: 120_000 }, (err, stdout, stderr) => {
-        if (stdout) {
-          this.logger.info(stdout.trim());
-        }
-        if (stderr) {
-          this.logger.warn(stderr.trim());
-        }
-        if (err) {
-          reject(new Error(stderr || err.message));
-        } else {
-          resolve();
-        }
-      });
-    });
+    return runPipFn(this.getProcessCtx(), cmd, cwd);
   }
 }

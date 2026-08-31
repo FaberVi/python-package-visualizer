@@ -130,7 +130,8 @@ export async function runCheckUpdates(ctx: VisualizerUpdateContext): Promise<voi
             ctx.history,
             unusedPackages,
             enrich.manualUsedPackages,
-            enrich.ignoredUpdates
+            enrich.ignoredUpdates,
+            enrich.pinnedPackages
           );
           ctx.sidebar.sendPackages(displayData, undefined, 'update');
         }

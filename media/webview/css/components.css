@@ -59,6 +59,7 @@
 .inline-tag.drift       { background: rgba(251,146,60,.15); color: var(--c-update); }
 .inline-tag.stale       { background: rgba(251,191,36,.15); color: #fbbf24; }
 .inline-tag.abandoned   { background: rgba(248,113,113,.15); color: #f87171; font-weight: 700; }
+.inline-tag.pinned      { background: rgba(139,92,246,.18); color: #a78bfa; font-weight: 600; }
 
 /* ── Popularity badge ────────────────────────────── */
 .pkg-popularity {

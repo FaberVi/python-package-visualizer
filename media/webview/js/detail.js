@@ -146,6 +146,22 @@ window.showDetail = function (pkg) {
     </div>
   ` : '';
 
+  const canPin = Boolean(pkg.installedVersion);
+  const pinActionsHtml = pkg.pinnedVersion ? `
+    <div class="field">
+      <label>${window.t ? window.t('tag.pinned').replace('{v}', esc(pkg.pinnedVersion)) : `Pinned ${esc(pkg.pinnedVersion)}`}</label>
+      <div style="margin-top:8px;">
+        <button class="action-btn detail-unpin-btn" data-name="${esc(pkg.name)}">${window.t ? window.t('btn.unpin') : '🔓 Unpin'}</button>
+      </div>
+    </div>
+  ` : canPin ? `
+    <div class="field">
+      <div style="margin-top:6px;">
+        <button class="action-btn detail-pin-btn" data-name="${esc(pkg.name)}">${window.t ? window.t('btn.pin') : '📌 Pin'}</button>
+      </div>
+    </div>
+  ` : '';
+
   const pypiLinkHtml = `<div class="field"><label>${window.t ? window.t('detail.pypiPage') : 'PyPI Page'}</label><div class="field-value"><span style="cursor:pointer;color:var(--vscode-textLink-foreground)" class="detail-pypi-link" data-name="${esc(pkg.name)}">${esc(pkg.name)} &#x2197;</span></div></div>`;
 
   const licenseInfo = window.normalizeLicenseDisplay
@@ -215,6 +231,7 @@ window.showDetail = function (pkg) {
     ${conflictsHtml}
     ${conflictActionsHtml}
     ${ignoreActionsHtml}
+    ${pinActionsHtml}
     ${vulnHtml}
     ${alternativesHtml}
     ${history.length ? `<div class="field"><label>${window.t ? window.t('detail.availableVersions') : 'Available versions'}</label><div style="margin-top:6px;line-height:1.8">${versionChips}</div></div>` : ''}
@@ -308,6 +325,35 @@ window.showDetail = function (pkg) {
       if (!name || !vscode) return;
       btn.disabled = true;
       vscode.postMessage({ type: 'unignorePackageUpdate', name });
+      elDetail.style.display = 'none';
+      elOverlay.style.display = 'none';
+    });
+  });
+
+  elDetailBody.querySelectorAll('.detail-pin-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      window.showPinVersionDialog?.(pkg, version => {
+        btn.disabled = true;
+        if (vscode) {
+          vscode.postMessage({
+            type: 'pinPackageToVersion',
+            name: pkg.name,
+            version,
+            source: pkg.source || '',
+          });
+        }
+        elDetail.style.display = 'none';
+        elOverlay.style.display = 'none';
+      });
+    });
+  });
+
+  elDetailBody.querySelectorAll('.detail-unpin-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      if (!name || !vscode) return;
+      btn.disabled = true;
+      vscode.postMessage({ type: 'unpinPackage', name });
       elDetail.style.display = 'none';
       elOverlay.style.display = 'none';
     });

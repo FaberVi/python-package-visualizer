@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/logger.js';
+import { compareVersions as compareVersionNumbers } from '../utils/version.js';
+import { checkPythonRequires } from '../utils/pythonRequires.js';
 
 export type VersionStatus =
   | 'up-to-date'
@@ -338,23 +340,7 @@ export class VersionChecker {
    * Returns negative if a < b, 0 if equal, positive if a > b.
    */
   compareVersions(a: string, b: string): number {
-    const normalize = (v: string): number[] =>
-      v
-        .replace(/[^0-9.]/g, '')
-        .split('.')
-        .map(Number);
-
-    const pa = normalize(a);
-    const pb = normalize(b);
-    const len = Math.max(pa.length, pb.length);
-
-    for (let i = 0; i < len; i++) {
-      const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-      if (diff !== 0) {
-        return diff;
-      }
-    }
-    return 0;
+    return compareVersionNumbers(a, b);
   }
 
   async getPythonVersion(): Promise<string | null> {
@@ -379,58 +365,6 @@ export class VersionChecker {
   }
 
   checkPythonCompatibility(requiresPython: string, currentPython: string): boolean {
-    // Parse version strings: e.g., "3.8", ">=3.8", ">=3.8,<4.0"
-    const parseVersion = (v: string): [number, number] => {
-      const match = v.match(/(\d+)\.(\d+)/);
-      return match ? [parseInt(match[1], 10), parseInt(match[2], 10)] : [0, 0];
-    };
-
-    const [currentMajor, currentMinor] = parseVersion(currentPython);
-    const current = currentMajor * 100 + currentMinor;
-
-    // Parse requirement string
-    const constraints = requiresPython.split(',').map(c => c.trim());
-    for (const constraint of constraints) {
-      // Handle >=X.Y, <=X.Y, ==X.Y, <X.Y, >X.Y, !=X.Y
-      if (constraint.match(/^>=/)) {
-        const [reqMajor, reqMinor] = parseVersion(constraint);
-        const required = reqMajor * 100 + reqMinor;
-        if (current < required) {
-          return false;
-        }
-      } else if (constraint.match(/^<=/)) {
-        const [reqMajor, reqMinor] = parseVersion(constraint);
-        const required = reqMajor * 100 + reqMinor;
-        if (current > required) {
-          return false;
-        }
-      } else if (constraint.match(/^==/)) {
-        const [reqMajor, reqMinor] = parseVersion(constraint);
-        const required = reqMajor * 100 + reqMinor;
-        if (current !== required) {
-          return false;
-        }
-      } else if (constraint.match(/^</)) {
-        const [reqMajor, reqMinor] = parseVersion(constraint);
-        const required = reqMajor * 100 + reqMinor;
-        if (current >= required) {
-          return false;
-        }
-      } else if (constraint.match(/^>/)) {
-        const [reqMajor, reqMinor] = parseVersion(constraint);
-        const required = reqMajor * 100 + reqMinor;
-        if (current <= required) {
-          return false;
-        }
-      } else if (constraint.match(/^!=/)) {
-        const [reqMajor, reqMinor] = parseVersion(constraint);
-        const required = reqMajor * 100 + reqMinor;
-        if (current === required) {
-          return false;
-        }
-      }
-    }
-
-    return true;
+    return checkPythonRequires(requiresPython, currentPython);
   }
 }

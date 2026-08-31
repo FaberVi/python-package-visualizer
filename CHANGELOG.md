@@ -5,6 +5,22 @@ All notable changes to **Python Package Visualizer (Community)** are documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [3.3.0] — 2026-09-01
+
+### Added
+
+- Pin a package to a chosen PyPI version from the list or detail panel — installs it if needed, writes `==` in the dependency file, and hides updates until a newer release than at pin time; **Ignore** remains a separate action
+
+### Fixed
+
+- Bulk Update no longer silently aligns exact pins of packages that were not selected — only successfully updated packages are reconciled in dependency files
+
+### Changed
+
+- Internal refactor: split oversized TypeScript and webview modules for maintainability (no user-facing API changes)
+
 ## [3.2.6] — 2026-08-07
 
 ### Added

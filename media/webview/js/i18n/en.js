@@ -94,6 +94,8 @@ window.i18n.en = {
   'tag.driftTitle': 'Installed version differs from the exact pin (==) in the requirements file',
   'tag.majorLock': '🔒 Major',
   'tag.majorLockTitle': 'Major version jump — disabled in Safe Mode',
+  'tag.pinned': 'Pinned {v}',
+  'tag.pinnedTitle': 'Held at this version until you unpin or a newer PyPI release than at pin time',
   // Action buttons
   'btn.update': '⬆ Update',
   'btn.forceUpdate': '⬆ Force update',
@@ -113,6 +115,10 @@ window.i18n.en = {
   'btn.ignoreUpdateTitle': 'Hide this PyPI update until a newer version is published',
   'btn.unignoreUpdate': '↩ Unignore',
   'btn.unignoreUpdateTitle': 'Show this update again in the list',
+  'btn.pin': '📌 Pin',
+  'btn.pinTitle': 'Install a chosen version, write == in the file, and hide updates until a newer PyPI release',
+  'btn.unpin': '🔓 Unpin',
+  'btn.unpinTitle': 'Show updates again; keep the == pin in the dependency file',
   'btn.updating': 'Updating…',
   'btn.installing': 'Installing…',
   'btn.rollingBack': 'Rolling back…',
@@ -335,6 +341,13 @@ window.i18n.en = {
   'sync.snapshotFirst': '📸 Snapshot & Align',
   'sync.justSync': '🔗 Just Align',
   'sync.cancel': 'Cancel',
+  // Pin version
+  'pin.dialogTitle': 'Pin package version',
+  'pin.dialogMessage': 'Choose a version for {name}. It will be installed if needed, written as == in the dependency file, and updates will stay hidden until PyPI publishes something newer than today\'s latest.',
+  'pin.versionLabel': 'Version',
+  'pin.installedSuffix': 'installed',
+  'pin.confirmBtn': '📌 Pin',
+  'pin.rangeTightenWarning': 'The current constraint is a range or bare name. Pin will rewrite it to an exact == pin.',
   // Graph
   'graph.hint': 'Scroll to zoom  ·  Drag to pan  ·  Click node for details  ·  Double-click or orange dot to expand',
   'graph.fit': '⊡ Fit',

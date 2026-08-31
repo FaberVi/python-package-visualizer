@@ -50,7 +50,7 @@ window.buildTableRowHtml = function (pkg, helpers) {
     }
   } else if (pkg.status === 'not-installed') {
     actionBtnHtml += `<button class="action-btn install-btn" data-name="${esc(pkg.name)}">${window.t('btn.install')}</button>`;
-  } else if (!hasDrift) {
+  } else if (!hasDrift && !pkg.installedVersion && !pkg.pinnedVersion) {
     actionBtnHtml += `<span style="font-size:11px;opacity:0.5;">\u2014</span>`;
   }
 
@@ -68,6 +68,9 @@ window.buildTableRowHtml = function (pkg, helpers) {
   if (hasDrift) {
     tagsHtml += ` <span class="inline-tag drift" title="${window.t('tag.driftTitle')}">${window.t('tag.drift')} (${reqVersion})</span>`;
   }
+  if (pkg.pinnedVersion) {
+    tagsHtml += ` <span class="inline-tag pinned" title="${window.t('tag.pinnedTitle')}">${window.t('tag.pinned').replace('{v}', esc(pkg.pinnedVersion))}</span>`;
+  }
 
   if (pkg.releaseDate) {
     const ageMs = Date.now() - new Date(pkg.releaseDate).getTime();
@@ -83,6 +86,14 @@ window.buildTableRowHtml = function (pkg, helpers) {
   let syncBtnHtml = '';
   if (hasDrift) {
     syncBtnHtml = `<button class="action-btn sync sync-btn" data-name="${esc(pkg.name)}" data-source="${esc(pkg.source || '')}" title="${window.t('btn.syncTitle')}">${window.t('btn.sync')}</button> `;
+  }
+
+  const hasPinVersions = Boolean(pkg.installedVersion);
+  let pinBtnHtml = '';
+  if (pkg.pinnedVersion) {
+    pinBtnHtml = `<button class="action-btn unpin-btn" data-name="${esc(pkg.name)}" title="${window.t('btn.unpinTitle')}">${window.t('btn.unpin')}</button>`;
+  } else if (hasPinVersions) {
+    pinBtnHtml = `<button class="action-btn pin-btn" data-name="${esc(pkg.name)}" title="${window.t('btn.pinTitle')}">${window.t('btn.pin')}</button>`;
   }
 
   const relDate = pkg.releaseDate ? window.formatReleaseDate(pkg.releaseDate) : '\u2014';
@@ -107,6 +118,7 @@ window.buildTableRowHtml = function (pkg, helpers) {
         <span class="act-group">
           ${syncBtnHtml}
           ${actionBtnHtml}
+          ${pinBtnHtml}
         </span>
       </td>
     </tr>

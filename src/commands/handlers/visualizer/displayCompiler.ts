@@ -7,6 +7,7 @@ import type { VersionHistoryCache } from '../../../services/versionHistoryCache.
 import { getAlternatives } from '../../../data/alternativesMap.js';
 import { hasDrift } from '../../../utils/version.js';
 import { isUpdateIgnoredForDisplay } from '../../../services/ignoredUpdates.js';
+import type { PinnedPackageEntry } from '../../../services/pinnedPackages.js';
 
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/g, '-');
 
@@ -23,9 +24,17 @@ export function buildEnrichedDisplayData(
   history: VersionHistoryCache,
   unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
   manualUsedPackages?: Set<string>,
-  ignoredUpdates?: Map<string, string>
+  ignoredUpdates?: Map<string, string>,
+  pinnedPackages?: Map<string, PinnedPackageEntry>
 ): PackageDisplayData[] {
-  return buildDisplayData(scanned, checkResults, unusedPackages, manualUsedPackages, ignoredUpdates).map(pkg => ({
+  return buildDisplayData(
+    scanned,
+    checkResults,
+    unusedPackages,
+    manualUsedPackages,
+    ignoredUpdates,
+    pinnedPackages
+  ).map(pkg => ({
     ...pkg,
     previousVersion: history.getPreviousVersion(workspaceRoot, pkg.name),
     installTime: history.getLatestInstallTime(workspaceRoot, pkg.name),
@@ -62,7 +71,8 @@ export function buildDisplayData(
   checkResults: VersionCheckResult[],
   unusedPackages?: Set<string> | Map<string, UnusedPackageInfo>,
   manualUsedPackages?: Set<string>,
-  ignoredUpdates?: Map<string, string>
+  ignoredUpdates?: Map<string, string>,
+  pinnedPackages?: Map<string, PinnedPackageEntry>
 ): PackageDisplayData[] {
   const resultMap = new Map(checkResults.map(r => [r.packageName, r]));
   const isEnriched = unusedPackages instanceof Map;
@@ -151,6 +161,7 @@ export function buildDisplayData(
       installSize: result?.installSize,
       alternatives: getAlternatives(pkg.name),
       ignoredUpdateVersion,
+      pinnedVersion: pinnedPackages?.get(normName)?.version,
     };
   });
 }

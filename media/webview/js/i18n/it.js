@@ -94,6 +94,8 @@ window.i18n.it = {
   'tag.driftTitle': 'La versione installata differisce dal pin esatto (==) nel file requirements',
   'tag.majorLock': '🔒 Major',
   'tag.majorLockTitle': 'Salto di versione major — disabilitato in Modalità Sicura',
+  'tag.pinned': 'Fissato {v}',
+  'tag.pinnedTitle': 'Bloccato a questa versione finché non togli il pin o PyPI pubblica qualcosa di più nuovo rispetto al momento del pin',
   // Action buttons
   'btn.update': '⬆ Aggiorna',
   'btn.forceUpdate': '⬆ Forza aggiornamento',
@@ -113,6 +115,10 @@ window.i18n.it = {
   'btn.ignoreUpdateTitle': 'Nascondi questo aggiornamento PyPI fino a una versione più recente',
   'btn.unignoreUpdate': '↩ Ripristina',
   'btn.unignoreUpdateTitle': 'Mostra di nuovo questo aggiornamento nella lista',
+  'btn.pin': '📌 Fissa',
+  'btn.pinTitle': 'Installa una versione scelta, scrivi == nel file e nascondi gli update finché PyPI non pubblica qualcosa di più nuovo',
+  'btn.unpin': '🔓 Togli pin',
+  'btn.unpinTitle': 'Mostra di nuovo gli update; il == nel file resta',
   'btn.updating': 'Aggiornamento…',
   'btn.installing': 'Installazione…',
   'btn.rollingBack': 'Ripristino…',
@@ -335,6 +341,13 @@ window.i18n.it = {
   'sync.snapshotFirst': '📸 Snapshot e Allinea',
   'sync.justSync': '🔗 Solo Allinea',
   'sync.cancel': 'Annulla',
+  // Pin versione
+  'pin.dialogTitle': 'Fissa la versione del pacchetto',
+  'pin.dialogMessage': 'Scegli una versione per {name}. Verrà installata se serve, scritta come == nel file, e gli update resteranno nascosti finché PyPI non pubblica qualcosa di più nuovo rispetto al latest di oggi.',
+  'pin.versionLabel': 'Versione',
+  'pin.installedSuffix': 'installata',
+  'pin.confirmBtn': '📌 Fissa',
+  'pin.rangeTightenWarning': 'Il vincolo attuale è un range o un nome senza versione. Il pin lo riscriverà come == esatto.',
   // Graph
   'graph.hint': 'Scrolla per zoom  ·  Trascina per muovere  ·  Clic per dettagli  ·  Doppio clic o punto arancione per espandere',
   'graph.fit': 'Adatta',

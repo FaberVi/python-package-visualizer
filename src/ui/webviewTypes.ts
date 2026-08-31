@@ -45,6 +45,8 @@ export type WebviewMessage =
   | { type: 'exportReport'; format: 'markdown' | 'json' }
   | { type: 'removeFromRequirements'; name: string; source: string }
   | { type: 'pinVersion'; name: string; version: string; source: string } // legacy; prefer syncRequirementsToInstalled
+  | { type: 'pinPackageToVersion'; name: string; version: string; source: string }
+  | { type: 'unpinPackage'; name: string }
   | { type: 'createRequirements' }
   | { type: 'bulkUpdate'; names: string[] }
   | { type: 'bulkInstall'; names: string[] }
@@ -144,6 +146,8 @@ export interface PackageDisplayData {
   referenceUsageFound?: boolean;
   /** PyPI latest version the user chose to ignore (when status is update-ignored). */
   ignoredUpdateVersion?: string;
+  /** User-chosen pin version (tag); independent of update-ignored status. */
+  pinnedVersion?: string;
 }
 
 /** Minimal package payload for dependency graph lookup (transitive installed packages). */

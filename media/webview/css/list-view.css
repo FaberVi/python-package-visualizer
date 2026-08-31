@@ -225,9 +225,11 @@ td:hover .copy-hint { opacity: .55; }
   border-color: rgba(45,212,191,.55);
 }
 
-.pin-btn {
+.pin-btn,
+.unpin-btn {
   background: none; border: 1px solid var(--vscode-panel-border);
   border-radius: 4px; padding: 3px 7px; cursor: pointer;
   font-size: 11px; color: var(--vscode-descriptionForeground);
 }
-.pin-btn:hover { color: var(--vscode-foreground); border-color: var(--vscode-foreground); }
+.pin-btn:hover,
+.unpin-btn:hover { color: var(--vscode-foreground); border-color: var(--vscode-foreground); }

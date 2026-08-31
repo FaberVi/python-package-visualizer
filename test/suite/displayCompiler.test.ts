@@ -104,6 +104,51 @@ suite('displayCompiler', () => {
     assert.strictEqual(displayNewer.find(p => p.name === 'requests')?.status, 'update-available');
   });
 
+  test('buildDisplayData sets pinnedVersion independently of status', () => {
+    const ignored = new Map<string, string>([['requests', '2.32.0']]);
+    const pinned = new Map([
+      ['requests', { version: '2.31.0', ignoredLatest: '2.32.0' }],
+    ]);
+    const display = buildDisplayData(scanned, checkResults, undefined, undefined, ignored, pinned);
+    const requests = display.find(p => p.name === 'requests');
+    assert.strictEqual(requests?.status, 'update-ignored');
+    assert.strictEqual(requests?.pinnedVersion, '2.31.0');
+
+    const upToDateCheck = [
+      { ...checkResults[0], latestVersion: '2.31.0', status: 'up-to-date' as const },
+      checkResults[1],
+    ];
+    const pinnedCurrent = new Map([
+      ['requests', { version: '2.31.0', ignoredLatest: '2.31.0' }],
+    ]);
+    const displayCurrent = buildDisplayData(
+      scanned,
+      upToDateCheck,
+      undefined,
+      undefined,
+      undefined,
+      pinnedCurrent
+    );
+    const current = displayCurrent.find(p => p.name === 'requests');
+    assert.strictEqual(current?.status, 'up-to-date');
+    assert.strictEqual(current?.pinnedVersion, '2.31.0');
+  });
+
+  test('buildDisplayData keeps pinnedVersion after ignore expiry', () => {
+    const ignored = new Map<string, string>([['requests', '2.32.0']]);
+    const pinned = new Map([
+      ['requests', { version: '2.31.0', ignoredLatest: '2.32.0' }],
+    ]);
+    const newerCheck = [
+      { ...checkResults[0], latestVersion: '2.33.0' },
+      checkResults[1],
+    ];
+    const display = buildDisplayData(scanned, newerCheck, undefined, undefined, ignored, pinned);
+    const requests = display.find(p => p.name === 'requests');
+    assert.strictEqual(requests?.status, 'update-available');
+    assert.strictEqual(requests?.pinnedVersion, '2.31.0');
+  });
+
   test('buildDisplayData marks unused packages from Set', () => {
     const display = buildDisplayData(scanned, checkResults, new Set(['numpy']));
     const numpy = display.find(p => p.name === 'numpy');

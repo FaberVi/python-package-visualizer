@@ -1,6 +1,7 @@
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { detectVenvType, findDuplicates, normalizePackageName } from './venvLayout.js';
 
 /** Individual installed package entry from pip list. */
 export interface InstalledPackageEntry {
@@ -60,8 +61,8 @@ export class VenvHealthChecker {
       }
     }
 
-    const duplicatePackages = this.findDuplicates(installedPackages);
-    const venvInfo = this.detectVenvType(cwd, pythonInfo.sysPrefix, pythonInfo.basePrefix);
+    const duplicatePackages = findDuplicates(installedPackages);
+    const venvInfo = detectVenvType(cwd, pythonInfo.sysPrefix, pythonInfo.basePrefix);
 
     const sitePackagesPath = await this.getSitePackagesPath(cwd, pipInfo.location);
     const [sitePackagesSizeBytes, packageDiskSizes] = await Promise.all([
@@ -70,7 +71,7 @@ export class VenvHealthChecker {
     ]);
 
     for (const pkg of installedPackages) {
-      const diskSize = packageDiskSizes.get(this.normalizePackageName(pkg.name));
+      const diskSize = packageDiskSizes.get(normalizePackageName(pkg.name));
       if (diskSize !== undefined && diskSize > 0) {
         pkg.diskSizeBytes = diskSize;
       }
@@ -95,10 +96,6 @@ export class VenvHealthChecker {
       duplicatePackages,
       sitePackagesPath,
     };
-  }
-
-  private normalizePackageName(name: string): string {
-    return name.toLowerCase().replace(/[-_.]+/g, '-');
   }
 
   /** Resolves the site-packages root via sysconfig, falling back to pip's install path. */
@@ -254,7 +251,7 @@ print(json.dumps(result))
           const map = new Map<string, number>();
           for (const entry of entries) {
             if (entry.size > 0) {
-              map.set(this.normalizePackageName(entry.name), entry.size);
+              map.set(normalizePackageName(entry.name), entry.size);
             }
           }
           resolve(map);
@@ -387,67 +384,5 @@ print(json.dumps(result))
       });
       child.on('error', () => { clearTimeout(timer); resolve(new Map()); });
     });
-  }
-
-
-  /** Detects duplicate packages (same normalized name, different versions). */
-  private findDuplicates(packages: Array<{ name: string; version: string }>): Array<{ name: string; versions: string[] }> {
-    const normalized = new Map<string, string[]>();
-    for (const pkg of packages) {
-      const norm = pkg.name.toLowerCase().replace(/[-_.]+/g, '-');
-      const existing = normalized.get(norm);
-      if (existing) {
-        existing.push(`${pkg.name}==${pkg.version}`);
-      } else {
-        normalized.set(norm, [`${pkg.name}==${pkg.version}`]);
-      }
-    }
-
-    const duplicates: Array<{ name: string; versions: string[] }> = [];
-    for (const [name, versions] of normalized) {
-      if (versions.length > 1) {
-        duplicates.push({ name, versions });
-      }
-    }
-    return duplicates;
-  }
-
-  /** Determines the venv type and whether it's currently active. */
-  private detectVenvType(
-    cwd: string,
-    sysPrefix: string,
-    basePrefix: string
-  ): { type: 'venv' | 'virtualenv' | 'conda' | 'system' | 'unknown'; path: string; isActive: boolean } {
-    // Check if sys.prefix !== sys.base_prefix → venv is active
-    const isActive = sysPrefix !== '' && basePrefix !== '' && sysPrefix !== basePrefix;
-
-    // Detect conda
-    if (process.env['CONDA_DEFAULT_ENV'] || process.env['CONDA_PREFIX']) {
-      return { type: 'conda', path: process.env['CONDA_PREFIX'] || sysPrefix, isActive: true };
-    }
-
-    // Check common venv directories
-    const venvDirs = ['.venv', 'venv', 'env', '.env'];
-    for (const dir of venvDirs) {
-      const venvPath = path.join(cwd, dir);
-      if (fs.existsSync(venvPath)) {
-        // Check if it has pyvenv.cfg (standard venv) or no_global_site_packages.txt (virtualenv)
-        if (fs.existsSync(path.join(venvPath, 'pyvenv.cfg'))) {
-          return { type: 'venv', path: venvPath, isActive };
-        }
-        const libPath = process.platform === 'win32'
-          ? path.join(venvPath, 'Lib')
-          : path.join(venvPath, 'lib');
-        if (fs.existsSync(libPath)) {
-          return { type: 'virtualenv', path: venvPath, isActive };
-        }
-      }
-    }
-
-    if (isActive) {
-      return { type: 'venv', path: sysPrefix, isActive: true };
-    }
-
-    return { type: 'system', path: sysPrefix || 'system', isActive: false };
   }
 }

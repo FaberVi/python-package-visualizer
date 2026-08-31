@@ -121,4 +121,33 @@ window.bindTableRowEvents = function (tbody) {
       }
     });
   });
+
+  tbody.querySelectorAll('.pin-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const pkg = window.allPackages.find(p => p.name === name);
+      if (!pkg) return;
+      window.showPinVersionDialog?.(pkg, version => {
+        btn.disabled = true;
+        window.vscode.postMessage({
+          type: 'pinPackageToVersion',
+          name: pkg.name,
+          version,
+          source: pkg.source || '',
+        });
+      });
+    });
+  });
+
+  tbody.querySelectorAll('.unpin-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      if (name) {
+        btn.disabled = true;
+        window.vscode.postMessage({ type: 'unpinPackage', name });
+      }
+    });
+  });
 };

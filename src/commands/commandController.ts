@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { Logger } from '../utils/logger.js';
 import { PackageScanner } from '../modules/packageScanner.js';
 import type { ImportScanner } from '../modules/importScanner.js';
@@ -14,7 +13,6 @@ import { RequirementsGenerator } from '../modules/requirementsGenerator.js';
 import { MigrationHelper } from '../modules/migrationHelper.js';
 import { SetupScriptGenerator } from '../modules/setupScriptGenerator.js';
 import { VenvHealthChecker } from '../services/venvHealthChecker.js';
-import { setSelectedVenvRoot, findMatchingWorkspaceRoot } from '../services/activeVenvRoot.js';
 
 // Import specialized domain handlers using ESM extensions
 import { PackageInstaller } from './handlers/packageInstaller.js';
@@ -25,7 +23,17 @@ import { MigrationHandler } from './handlers/migrationHandler.js';
 import { VisualizerHandler } from './handlers/visualizerHandler.js';
 import { UtilityHandler } from './handlers/utilityHandler.js';
 import { UnusedAiHandler } from './handlers/unusedAiHandler.js';
-import { routeSidebarMessage, routeWebviewMessage } from './commandController/messageRouter.js';
+import { registerCommands, type CommandControllerHost } from './commandController/registerCommands.js';
+import {
+  removeUnusedPackagesWithSnapshot as removeUnusedPackagesWithSnapshotFn,
+  snapshotBeforeUpdate as snapshotBeforeUpdateFn,
+} from './commandController/unusedRemovalFlow.js';
+import {
+  handleSelectActiveVenvProject as handleSelectActiveVenvProjectFn,
+  handleUpdatePip as handleUpdatePipFn,
+  handleVenvHealthRequest as handleVenvHealthRequestFn,
+} from './commandController/venvHealthActions.js';
+import { rollbackPackage as rollbackPackageFn } from './commandController/incompatibilityRollback.js';
 
 import type { ScannedPackage } from '../modules/packageScanner.js';
 import type { VersionCheckResult } from '../services/versionChecker.js';
@@ -165,141 +173,19 @@ export class CommandController {
     this.unusedAiHandler = new UnusedAiHandler(panel, logger, getRoot);
   }
 
+  private toHost(): CommandControllerHost {
+    void this.utilityHandler;
+    void this.unusedAiHandler;
+    return this as unknown as CommandControllerHost;
+  }
+
   /**
    * Registers all extension commands and registers the communication channel
    * with the visualizer sidebar and webview panel to establish the action router.
    * Why: Decouples VS Code UI layout and activation cycle from individual handler implementations.
    */
   registerAll(): void {
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand(
-        'extension.showPackageVisualizer',
-        async () => {
-          await this.visualizerHandler.showVisualizer();
-          void this.unusedAiHandler.sendCapabilities();
-        }
-      ),
-      vscode.commands.registerCommand(
-        'extension.openPackageVisualizer',
-        async () => {
-          await this.visualizerHandler.showVisualizer();
-          void this.unusedAiHandler.sendCapabilities();
-        }
-      ),
-      vscode.commands.registerCommand(
-        'extension.checkPackageUpdates',
-        () => this.visualizerHandler.checkUpdates()
-      ),
-      vscode.commands.registerCommand(
-        'extension.updatePackage',
-        (name: string) => this.updatePackage(name)
-      ),
-      vscode.commands.registerCommand(
-        'extension.rollbackPackage',
-        (name: string, version: string) => this.rollbackPackage(name, version)
-      ),
-      vscode.commands.registerCommand(
-        'extension.selectManualRequirements',
-        () => this.selectManualRequirements()
-      ),
-      vscode.commands.registerCommand(
-        'extension.clearManualRequirements',
-        () => this.clearManualRequirements()
-      ),
-      vscode.commands.registerCommand(
-        'extension.analyzeUnusedWithCursor',
-        () => {
-          const state = this.visualizerHandler.getUnusedAiScanState();
-          if (state) {
-            this.unusedAiHandler.setScanState(state);
-          }
-          void this.unusedAiHandler.analyzeUnusedWithCursor(undefined, true);
-        }
-      )
-    );
-
-    // Route messages from webview panel to correct handlers
-    this.panel.onMessage(async msg => {
-      if (msg.type === 'ready') {
-        void this.unusedAiHandler.sendCapabilities();
-        return;
-      }
-      routeWebviewMessage(this.getMessageRouterDeps(), msg);
-    });
-
-    if (this.sidebar) {
-      this.sidebar.onMessage(msg => {
-        routeSidebarMessage(this.getMessageRouterDeps(), msg as {
-          type: string;
-          url?: string;
-          name?: string;
-          version?: string;
-          names?: string[];
-        });
-      });
-    }
-  }
-
-  private getMessageRouterDeps() {
-    return {
-      showVisualizer: async () => {
-        await this.visualizerHandler.showVisualizer();
-        void this.unusedAiHandler.sendCapabilities();
-      },
-      sendCapabilities: () => { void this.unusedAiHandler.sendCapabilities(); },
-      updatePackage: (name: string) => this.updatePackage(name),
-      fixConflict: (requirement: string, packageName: string) => this.fixConflict(requirement, packageName),
-      rollbackPackage: (name: string, version: string, dueToIncompatibility?: boolean) =>
-        this.rollbackPackage(name, version, dueToIncompatibility),
-      updateAllPackages: (names: string[]) => this.updateAllPackages(names),
-      installAllPackages: (names: string[]) => this.installAllPackages(names),
-      installNewPackage: (name: string, version?: string) => this.installNewPackage(name, version),
-      searchPypi: (query: string) => this.utilityHandler.searchPypi(query),
-      exportReport: (format: 'markdown' | 'json') => this.exportReport(format),
-      removeFromRequirements: (name: string, source: string) => this.removeFromRequirements(name, source),
-      pinVersion: (name: string, version: string, source: string) => this.pinVersion(name, version, source),
-      createRequirementsFile: () => this.createRequirementsFile(),
-      bulkSyncRequirementsToInstalled: (packages: Array<{ name: string; source: string }>) =>
-        this.bulkSyncRequirementsToInstalled(packages),
-      bulkRemoveFromRequirements: async (names: string[], sources: string[]) => {
-        for (let i = 0; i < names.length; i++) {
-          await this.removeFromRequirements(names[i], sources[i] ?? '');
-        }
-      },
-      removeUnusedPackagesWithSnapshot: (packages: Array<{ name: string; source: string }>) =>
-        this.removeUnusedPackagesWithSnapshot(packages),
-      takeSnapshot: (name: string) => this.snapshotHandler.takeSnapshot(name, this.lastPackages),
-      restoreSnapshot: (id: string) => this.snapshotHandler.restoreSnapshot(id),
-      deleteSnapshot: (id: string) => this.snapshotHandler.deleteSnapshot(id),
-      listSnapshots: () => this.snapshotHandler.listSnapshots(),
-      generateRequirements: () => this.generateRequirements(),
-      migrateToUv: (mode: 'manual' | 'automatic') => this.migrateToUv(mode),
-      migrateToPoetry: () => this.migrateToPoetry(),
-      selectManualRequirements: () => this.selectManualRequirements(),
-      clearManualRequirements: () => this.clearManualRequirements(),
-      generateSetupScript: (format: 'bash' | 'powershell' | 'markdown') =>
-        this.utilityHandler.generateSetupScript(format),
-      syncRequirementsToInstalled: (name: string, source: string) =>
-        this.syncRequirementsToInstalled(name, source),
-      handleVenvHealthRequest: () => this.handleVenvHealthRequest(),
-      handleUpdatePip: () => this.handleUpdatePip(),
-      selectActiveVenvProject: (root: string) => this.handleSelectActiveVenvProject(root),
-      analyzeUnusedWithCursor: async (packageNames?: string[], userInitiated?: boolean) => {
-        if (userInitiated !== true) {
-          return;
-        }
-        const state = this.visualizerHandler.getUnusedAiScanState();
-        if (state) {
-          this.unusedAiHandler.setScanState(state);
-        }
-        await this.unusedAiHandler.analyzeUnusedWithCursor(packageNames, true);
-      },
-      markPackageManuallyUsed: (name: string) => this.visualizerHandler.markPackageManuallyUsed(name),
-      unmarkPackageManuallyUsed: (name: string) => this.visualizerHandler.unmarkPackageManuallyUsed(name),
-      ignorePackageUpdate: (name: string, latestVersion: string) =>
-        this.visualizerHandler.ignorePackageUpdate(name, latestVersion),
-      unignorePackageUpdate: (name: string) => this.visualizerHandler.unignorePackageUpdate(name),
-    };
+    registerCommands(this.toHost());
   }
 
   setImportCodeLensRefresh(fn: () => void): void {
@@ -317,7 +203,10 @@ export class CommandController {
 
   async updatePackage(packageName: string): Promise<void> {
     await this.snapshotBeforeUpdate(`Pre-update: ${packageName}`);
-    await this.installerHandler.updatePackage(packageName);
+    const ok = await this.installerHandler.updatePackage(packageName);
+    if (ok && await this.visualizerHandler.clearPinMetadata(packageName)) {
+      await this.refreshVisualizer();
+    }
   }
 
   async rollbackPackage(
@@ -325,38 +214,11 @@ export class CommandController {
     version: string,
     dueToIncompatibility?: boolean
   ): Promise<void> {
-    const hadConflict = this.isIncompatibilityRollback(packageName);
-    const ok = await this.installerHandler.rollbackPackage(packageName, version);
-    if (!ok) {
-      return;
-    }
-
-    const shouldAutoIgnore = dueToIncompatibility === true || hadConflict;
-    if (!shouldAutoIgnore) {
-      return;
-    }
-
-    const ignoredVersion = await this.visualizerHandler.autoIgnoreLatestPypiUpdate(packageName);
-    if (ignoredVersion) {
-      const lang = vscode.workspace
-        .getConfiguration('pythonPackageVisualizer')
-        .get<string>('language', 'en');
-      const isIt = lang === 'it';
-      void vscode.window.showInformationMessage(
-        isIt
-          ? `Python Packages: aggiornamento PyPI ${ignoredVersion} ignorato automaticamente dopo il ripristino per incompatibilità`
-          : `Python Packages: PyPI update ${ignoredVersion} auto-ignored after incompatibility rollback`
-      );
-      await this.refreshVisualizer();
-    }
-  }
-
-  private isIncompatibilityRollback(packageName: string): boolean {
-    const norm = packageName.toLowerCase().replace(/[-_.]+/g, '-');
-    const pkg = this.visualizerHandler.getLastPackages().find(
-      p => p.name.toLowerCase().replace(/[-_.]+/g, '-') === norm
-    );
-    return Boolean(pkg?.hasConflict);
+    await rollbackPackageFn({
+      visualizerHandler: this.visualizerHandler,
+      installerHandler: this.installerHandler,
+      refreshVisualizer: () => this.refreshVisualizer(),
+    }, packageName, version, dueToIncompatibility);
   }
 
   async updateAllPackages(names: string[]): Promise<void> {
@@ -369,7 +231,10 @@ export class CommandController {
         ? `Pre-update: bulk (${names.length} pacchetti)`
         : `Pre-update: bulk (${names.length} packages)`;
     await this.snapshotBeforeUpdate(label);
-    await this.installerHandler.updateAllPackages(names);
+    const succeeded = await this.installerHandler.updateAllPackages(names);
+    if (succeeded.length > 0 && await this.visualizerHandler.clearPinMetadataFor(succeeded)) {
+      await this.refreshVisualizer();
+    }
   }
 
   async installNewPackage(packageName: string, version?: string): Promise<void> {
@@ -403,6 +268,15 @@ export class CommandController {
     await this.requirementsHandler.pinVersion(packageName, version, sourceFile);
   }
 
+  async pinPackageToVersion(packageName: string, version: string, sourceFile: string): Promise<void> {
+    await this.snapshotBeforeUpdate(`Pre-pin: ${packageName}`);
+    const ok = await this.installerHandler.pinPackageToVersion(packageName, version, sourceFile);
+    if (!ok) {
+      return;
+    }
+    await this.visualizerHandler.persistPin(packageName, version);
+  }
+
   async syncRequirementsToInstalled(packageName: string, sourceFile: string): Promise<void> {
     await this.requirementsHandler.syncRequirementsToInstalled(packageName, sourceFile, this.lastPackages);
   }
@@ -414,74 +288,12 @@ export class CommandController {
   async removeUnusedPackagesWithSnapshot(
     packages: Array<{ name: string; source: string }>
   ): Promise<void> {
-    const root = this.getWorkspaceRoot();
-    if (!root || packages.length === 0) {
-      return;
-    }
-
-    const lang = vscode.workspace
-      .getConfiguration('pythonPackageVisualizer')
-      .get<string>('language', 'en');
-    const isIt = lang === 'it';
-    const names = packages.map(p => p.name).join(', ');
-    const preview = names.length > 120 ? `${names.slice(0, 117)}…` : names;
-
-    const confirmLabel = isIt ? 'Rimuovi con snapshot' : 'Remove with snapshot';
-    const cancelLabel = isIt ? 'Annulla' : 'Cancel';
-    const message = isIt
-      ? `Rimuovere ${packages.length} pacchetto/i dai file dipendenze e disinstallarli dal venv?\n\nVerrà creato uno snapshot automatico prima della rimozione.\n\n${preview}`
-      : `Remove ${packages.length} package(s) from dependency files and uninstall from the venv?\n\nAn automatic snapshot will be saved before removal.\n\n${preview}`;
-
-    const choice = await vscode.window.showWarningMessage(
-      message,
-      { modal: true },
-      confirmLabel,
-      cancelLabel
-    );
-    if (choice !== confirmLabel) {
-      return;
-    }
-
-    const snapLabel = isIt
-      ? `Pre-rimozione inutilizzati (${packages.length} pacchetti)`
-      : `Pre-unused-removal (${packages.length} packages)`;
-    await this.snapshotBeforeUpdate(snapLabel);
-
-    const { removed, failed } = await this.requirementsHandler.bulkRemovePackagesWithoutConfirm(packages);
-
-    const removedFromFiles = packages
-      .filter(p => !failed.includes(p.name))
-      .map(p => p.name);
-
-    let uninstalled = 0;
-    let uninstallFailed: string[] = [];
-    if (removedFromFiles.length > 0) {
-      const uninstallResult = await this.installerHandler.bulkUninstallPackages(removedFromFiles);
-      uninstalled = uninstallResult.uninstalled;
-      uninstallFailed = uninstallResult.failed;
-    }
-
-    if (failed.length === 0 && uninstallFailed.length === 0) {
-      void vscode.window.showInformationMessage(
-        isIt
-          ? `Python Packages: Rimossi ${removed} da file dipendenze, ${uninstalled} disinstallati dal venv ✅`
-          : `Python Packages: Removed ${removed} from dependency files, ${uninstalled} uninstalled from venv ✅`
-      );
-    } else {
-      const parts: string[] = [];
-      if (removed > 0) {
-        parts.push(isIt ? `${removed} rimossi da file` : `${removed} removed from files`);
-      }
-      if (uninstalled > 0) {
-        parts.push(isIt ? `${uninstalled} disinstallati` : `${uninstalled} uninstalled`);
-      }
-      const failedSummary = [...failed, ...uninstallFailed.filter(n => !failed.includes(n))];
-      void vscode.window.showWarningMessage(
-        isIt
-          ? `Python Packages: ${parts.join(', ') || 'Nessuna operazione'}. Falliti: ${failedSummary.join(', ') || 'nessuno'}`
-          : `Python Packages: ${parts.join(', ') || 'No changes'}. Failed: ${failedSummary.join(', ') || 'none'}`
-      );
-    }
+    await removeUnusedPackagesWithSnapshotFn({
+      getWorkspaceRoot: () => this.getWorkspaceRoot(),
+      snapshotBeforeUpdate: label => this.snapshotBeforeUpdate(label),
+      requirementsHandler: this.requirementsHandler,
+      installerHandler: this.installerHandler,
+    }, packages);
   }
 
   async selectManualRequirements(): Promise<void> {
@@ -526,63 +338,36 @@ export class CommandController {
 
   /** Captures the current environment before a manual package update. */
   private async snapshotBeforeUpdate(label: string): Promise<void> {
-    const root = this.getActiveProjectRoot();
-    if (!root) {
-      return;
-    }
-
-    let packages: ScannedPackage[];
-    try {
-      packages = (await this.scanner.scanWorkspace(root)).packages;
-    } catch (err) {
-      this.logger.warn(`Pre-update scan failed, using cached packages: ${String(err)}`);
-      packages = this.lastPackages;
-    }
-
-    if (packages.length === 0) {
-      this.logger.warn('Pre-update snapshot skipped: no packages to save');
-      return;
-    }
-
-    await this.snapshotHandler.takePreUpdateSnapshot(label, packages);
+    await snapshotBeforeUpdateFn({
+      getActiveProjectRoot: () => this.getActiveProjectRoot(),
+      scanner: this.scanner,
+      logger: this.logger,
+      lastPackages: this.lastPackages,
+      snapshotHandler: this.snapshotHandler,
+    }, label);
   }
 
   async handleVenvHealthRequest(): Promise<void> {
-    const root = this.scanner.resolveHealthCheckCwd();
-    if (!root) { return; }
-    try {
-      const report = await this.venvHealthChecker.checkHealth(root);
-      const availableProjects = this.scanner.listWorkspaceVenvProjects();
-      const activeProject = availableProjects.find(project => project.root === root)
-        ?? availableProjects[0]
-        ?? { root, name: path.basename(root), pythonPath: this.scanner.resolvePythonPath() };
-      this.panel.sendVenvHealth({
-        report,
-        activeProject: { root: activeProject.root, name: activeProject.name },
-        availableProjects,
-      });
-    } catch {
-      // Non-blocking: silently ignore venv health failures
-    }
+    await handleVenvHealthRequestFn(this.venvActionsCtx());
   }
 
   async handleSelectActiveVenvProject(root: string): Promise<void> {
-    const projects = this.scanner.listWorkspaceVenvProjects();
-    const match = findMatchingWorkspaceRoot(root, projects.map(project => project.root));
-    if (!match) {
-      return;
-    }
-    await setSelectedVenvRoot(this.context, match);
-    await this.handleVenvHealthRequest();
-    await this.refreshVisualizer();
+    await handleSelectActiveVenvProjectFn(this.venvActionsCtx(), root);
   }
 
   async handleUpdatePip(): Promise<void> {
-    try {
-      await this.installerHandler.updatePip();
-    } finally {
-      void this.handleVenvHealthRequest();
-    }
+    await handleUpdatePipFn(this.venvActionsCtx());
+  }
+
+  private venvActionsCtx() {
+    return {
+      scanner: this.scanner,
+      venvHealthChecker: this.venvHealthChecker,
+      panel: this.panel,
+      context: this.context,
+      installerHandler: this.installerHandler,
+      refreshVisualizer: () => this.refreshVisualizer(),
+    };
   }
 
   private getActiveProjectRoot(): string | null {

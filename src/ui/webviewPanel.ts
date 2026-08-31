@@ -35,6 +35,7 @@ import type {
   DepFilesEmptyState,
 } from './webviewTypes.js';
 import type { VersionHistoryCache } from '../services/versionHistoryCache.js';
+import type { PinnedPackageEntry } from '../services/pinnedPackages.js';
 
 export type PackageEnrichment = {
   workspaceRoot: string;
@@ -43,6 +44,8 @@ export type PackageEnrichment = {
   manualUsedPackages?: Set<string>;
   /** Ignored PyPI latest versions (normalized name → version). */
   ignoredUpdates?: Map<string, string>;
+  /** User-chosen pins (normalized name → entry). */
+  pinnedPackages?: Map<string, PinnedPackageEntry>;
 };
 
 export class WebviewPanel {
@@ -170,7 +173,8 @@ export class WebviewPanel {
           enrich.history,
           unusedPackages,
           enrich.manualUsedPackages,
-          enrich.ignoredUpdates
+          enrich.ignoredUpdates,
+          enrich.pinnedPackages
         )
       : buildDisplayData(scanned, checkResults, unusedPackages);
     const sanitizedPackages = packages.map(p => ({
@@ -217,7 +221,8 @@ export class WebviewPanel {
           enrich.history,
           unusedPackages,
           enrich.manualUsedPackages,
-          enrich.ignoredUpdates
+          enrich.ignoredUpdates,
+          enrich.pinnedPackages
         )
       : buildDisplayData(scanned, checkResults, unusedPackages);
     const sanitizedPackages = packages.map(p => ({

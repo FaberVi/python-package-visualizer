@@ -71,15 +71,15 @@ for (const rel of addedFiles) {
     warnings.push(`${rel} (ensemble-tested in usageEvidence.test.ts)`);
     continue;
   }
+  if (isUiGlue(rel)) {
+    warnings.push(`${rel} (UI/glue — no unit coverage expected)`);
+    continue;
+  }
 
   const absTs = path.resolve(repoRoot, rel.replace(/\//g, path.sep));
   const key = Object.keys(summary).find(k => path.resolve(k) === absTs);
 
   if (!key) {
-    if (isUiGlue(rel)) {
-      warnings.push(`${rel} (UI/glue — no unit coverage expected)`);
-      continue;
-    }
     if (isUnitTestable(rel)) {
       failures.push({ rel, pct: 0, reason: 'no coverage entry — add unit tests' });
       continue;

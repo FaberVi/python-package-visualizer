@@ -38,6 +38,8 @@ export interface MessageRouterDeps {
   unmarkPackageManuallyUsed(name: string): Promise<void>;
   ignorePackageUpdate(name: string, latestVersion: string): Promise<void>;
   unignorePackageUpdate(name: string): Promise<void>;
+  pinPackageToVersion(name: string, version: string, source: string): Promise<void>;
+  unpinPackage(name: string): Promise<void>;
 }
 
 export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage): void {
@@ -202,6 +204,20 @@ export function routeWebviewMessage(deps: MessageRouterDeps, msg: WebviewMessage
       const m = msg as { type: string; name: string };
       if (m.name) {
         void deps.unignorePackageUpdate(m.name);
+      }
+      break;
+    }
+    case 'pinPackageToVersion': {
+      const m = msg as { type: string; name: string; version: string; source: string };
+      if (m.name && m.version) {
+        void deps.pinPackageToVersion(m.name, m.version, m.source ?? '');
+      }
+      break;
+    }
+    case 'unpinPackage': {
+      const m = msg as { type: string; name: string };
+      if (m.name) {
+        void deps.unpinPackage(m.name);
       }
       break;
     }

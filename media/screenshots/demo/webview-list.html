@@ -118,9 +118,10 @@ html, body {
       <option value="all">All statuses</option>
       <option value="update-available">Updates available</option>
       <option value="up-to-date">Up to date</option>
-      <option value="drift">Disaligned</option>
+      <option value="drift">Out of sync</option>
       <option value="unknown">Unknown</option>
       <option value="not-installed">Not installed</option>
+      <option value="update-ignored">Ignored updates</option>
     </select>
     <select id="filter-group" class="toolbar-select">
       <option value="all">All groups</option>
@@ -275,6 +276,7 @@ html, body {
     <!-- Bulk Action Bar -->
     <div id="bulk-bar">
       <span id="bulk-count">0 selected</span>
+      <button type="button" class="bulk-btn" id="bulk-install">⬇ Install Selected</button>
       <button type="button" class="bulk-btn" id="bulk-update">↑ Update Selected</button>
       <button type="button" class="bulk-btn" id="bulk-sync">🔗 Align Selected</button>
       <button type="button" class="bulk-btn danger" id="bulk-deselect">✕ Deselect All</button>
@@ -288,7 +290,7 @@ html, body {
         <button type="button" class="alert-banner-dismiss" id="vuln-banner-dismiss" title="Dismiss">&times;</button>
       </div>
       <div id="drift-banner" class="alert-banner">
-        <span class="alert-banner-msg">⚠️ <strong id="drift-banner-count">0</strong> package(s) installed version differs from requirements file</span>
+        <span class="alert-banner-msg">⚠️ <strong id="drift-banner-count">0</strong> package(s) with an exact pin (==) that differs from the installed version</span>
         <button type="button" class="alert-banner-action" id="drift-banner-view">View drift</button>
         <button type="button" class="alert-banner-dismiss" id="drift-banner-dismiss" title="Dismiss">&times;</button>
       </div>
@@ -508,23 +510,30 @@ html, body {
   <script src="../../webview/js/i18n/en.js"></script>
   <script src="../../webview/js/i18n/it.js"></script>
   <script src="../../webview/js/i18n.js"></script>
-  <script src="../../webview/js/utils.js"></script>
+  <script src="../../webview/js/htmlSafety.js"></script>
+  <script src="../../webview/js/versionDisplay.js"></script>
+  <script src="../../webview/js/packageMetrics.js"></script>
   <script src="../../webview/js/filters.js"></script>
   <script src="../../webview/js/table/rowBuilder.js"></script>
   <script src="../../webview/js/table/events.js"></script>
+  <script src="../../webview/js/table/dialogs/unusedRemoveConfirm.js"></script>
   <script src="../../webview/js/table/dialogs.js"></script>
   <script src="../../webview/js/table/bulk.js"></script>
   <script src="../../webview/js/table.js"></script>
   <script src="../../webview/js/modal.js"></script>
   <script src="../../webview/js/tour.js"></script>
+  <script src="../../webview/js/graph/treeData.js"></script>
   <script src="../../webview/js/graph.js"></script>
   <script src="../../webview/js/tabs/licenses.js"></script>
   <script src="../../webview/js/tabs/snapshots.js"></script>
   <script src="../../webview/js/tabs/dashboard.js"></script>
   <script src="../../webview/js/tabs/performance.js"></script>
   <script src="../../webview/js/tabs/history.js"></script>
+  <script src="../../webview/js/tabs/unused/confidenceRows.js"></script>
+  <script src="../../webview/js/tabs/unused/unusedBindings.js"></script>
   <script src="../../webview/js/tabs/unused.js"></script>
   <script src="../../webview/js/tabs/conflicts.js"></script>
+  <script src="../../webview/js/tabs/venv-health/installedPackagesPanel.js"></script>
   <script src="../../webview/js/tabs/venv-health.js"></script>
   <script src="../../webview/js/tabs.js"></script>
   <script src="../../webview/js/detail.js"></script>
