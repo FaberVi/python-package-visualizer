@@ -15,7 +15,7 @@ const WEBVIEW = path.join(ROOT, 'media', 'webview');
 const CSS_FILES = [
   'base.css', 'layout.css', 'components.css', 'components/loader.css',
   'components/empty-state.css', 'components/tour.css', 'components/modal.css',
-  'components/export-menu.css', 'list-view.css', 'detail-view.css',
+  'components/export-menu.css', 'components/row-context-menu.css', 'list-view.css', 'detail-view.css',
   'graph-view.css', 'tabs-view.css', 'tabs/dashboard.css', 'tabs/unused.css',
   'tabs/licenses.css', 'tabs/snapshots.css', 'tabs/performance.css',
   'tabs/history.css', 'tabs/conflicts.css', 'tabs/venv-health.css',
@@ -24,7 +24,7 @@ const CSS_FILES = [
 const JS_ASSETS = [
   ['js', 'state.js'], ['js', 'i18n', 'en.js'], ['js', 'i18n', 'it.js'], ['js', 'i18n.js'],
   ['js', 'htmlSafety.js'], ['js', 'versionDisplay.js'], ['js', 'packageMetrics.js'], ['js', 'filters.js'],
-  ['js', 'table', 'rowBuilder.js'], ['js', 'table', 'events.js'],
+  ['js', 'table', 'rowBuilder.js'], ['js', 'table', 'events.js'], ['js', 'table', 'rowContextMenu.js'],
   ['js', 'table', 'dialogs', 'unusedRemoveConfirm.js'], ['js', 'table', 'dialogs.js'],
   ['js', 'table', 'bulk.js'], ['js', 'table.js'], ['js', 'modal.js'], ['js', 'tour.js'],
   ['js', 'graph', 'treeData.js'], ['js', 'graph.js'], ['js', 'tabs', 'licenses.js'], ['js', 'tabs', 'snapshots.js'],

@@ -96,6 +96,9 @@ window.i18n.en = {
   'tag.majorLockTitle': 'Major version jump — disabled in Safe Mode',
   'tag.pinned': 'Pinned {v}',
   'tag.pinnedTitle': 'Held at this version until you unpin or a newer PyPI release than at pin time',
+  // Row context menu
+  'menu.viewDetails': '🔍 View details',
+  'menu.openPypi': 'PyPI ↗',
   // Action buttons
   'btn.update': '⬆ Update',
   'btn.forceUpdate': '⬆ Force update',

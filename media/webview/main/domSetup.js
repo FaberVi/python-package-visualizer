@@ -189,6 +189,10 @@ window.setupDomListeners = function () {
       if (elExportWrap && !elExportWrap.contains(e.target)) {
         closeExportMenu();
       }
+      const rowMenu = document.getElementById('pkg-row-context-menu');
+      if (rowMenu && !rowMenu.contains(e.target)) {
+        window.hidePackageRowContextMenu?.();
+      }
     });
 
     document.querySelectorAll('.export-item').forEach(item => {
@@ -369,6 +373,7 @@ window.setupDomListeners = function () {
     if (e.key === 'Escape') {
       closeDetail();
       window.hideAddPkgModal?.();
+      window.hidePackageRowContextMenu?.();
       return;
     }
     // R key -> Re-scan workspace dependencies (when not in input)
@@ -394,5 +399,6 @@ window.setupDomListeners = function () {
   window.updateSortHeaders();
 
   // Send ready notification signal back to Visualizer Host Code Panel
+  window.initPackageRowContextMenu?.();
   window.vscode.postMessage({ type: 'ready' });
 };

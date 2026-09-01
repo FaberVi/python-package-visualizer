@@ -96,6 +96,9 @@ window.i18n.it = {
   'tag.majorLockTitle': 'Salto di versione major — disabilitato in Modalità Sicura',
   'tag.pinned': 'Fissato {v}',
   'tag.pinnedTitle': 'Bloccato a questa versione finché non togli il pin o PyPI pubblica qualcosa di più nuovo rispetto al momento del pin',
+  // Row context menu
+  'menu.viewDetails': '🔍 Apri dettagli',
+  'menu.openPypi': 'PyPI ↗',
   // Action buttons
   'btn.update': '⬆ Aggiorna',
   'btn.forceUpdate': '⬆ Forza aggiornamento',
