@@ -4,7 +4,7 @@
 
 **Community-maintained fork — dependency manager for Python projects in VS Code & Cursor**
 
-![Version](https://img.shields.io/badge/version-3.2.1-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.3.0-blue?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![VS Code](https://img.shields.io/badge/vscode-%5E1.105.0-007ACC?style=flat-square&logo=visualstudiocode)
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python)
@@ -24,7 +24,8 @@ Every Python developer has been there: `pip list --outdated` is noisy, `requirem
 - 🎯 **See everything at a glance** — dashboard, dependency graph, health score
 - 🔒 **Catch vulnerabilities early** — CVE badges pulled from PyPI advisory DB
 - 🧹 **Clean up bloat** — find packages that aren't imported anywhere
-- ⚡ **Update safely** — Safe Mode blocks major-version jumps
+- 📌 **Pin a chosen version** — install it, write `==` in the file, hide updates until PyPI ships something newer
+- ⚡ **Update safely** — Safe Mode blocks major-version jumps; Ignore hides a release without changing the env
 - 📸 **Rollback confidently** — environment snapshots & update history
 
 ---
@@ -68,13 +69,23 @@ If no dependency file is found, the panel shows an in-app empty state with a **S
 ### 📋 Package Management
 | Feature | What it does |
 |---|---|
-| **Package List** | Sortable table of all dependencies with installed vs latest versions |
-| **One-click Update** | Update a single package or all at once |
+| **Package List** | Sortable table of all dependencies with required, installed, and latest versions, plus filters (updates, ignored, out of sync, group) |
+| **One-click Update** | Update a single package or all selected packages |
+| **Pin** | Choose a known PyPI version from the row or detail panel — installs it if needed, writes `==` in the dependency file, and hides updates until a newer release than at pin time. A **Pinned** tag stays on the row. **Unpin** only lifts the hold; the `==` pin in the file remains |
+| **Ignore** | Hide the current PyPI update until a newer version is published — does not change the installed package. Separate from Pin |
 | **Rollback** | Revert to a previously installed version |
 | **Install New** | Search PyPI and install packages directly |
-| **Align Versions** | Rewrite exact pins (`==`) in dependency files to match the installed version. Ranges / Poetry `^` are left unchanged on update. |
+| **Align Versions** | Rewrite exact pins (`==`) in dependency files to match the *currently installed* version. Ranges / Poetry `^` are left unchanged on update |
 | **Remove Unused** | Delete packages from requirements with one click |
-| **Bulk Actions** | Select multiple packages and update/align/remove together |
+| **Bulk Actions** | Select multiple packages and update / align / remove together (no bulk pin) |
+
+Pin, Ignore, and Align are different tools:
+
+| | **Pin** | **Ignore** | **Align** |
+|---|---|---|---|
+| Env / file | Installs the version you pick and writes `==` | Leaves env and file unchanged | Rewrites an existing exact pin to match *what is already installed* |
+| Updates | Hidden until PyPI is newer than at pin time | Hidden until PyPI publishes something newer than the ignored latest | Not hidden |
+| UI | Tag **Pinned** until Unpin or a successful Update | Status **update-ignored** until expiry | Tag **out of sync** when `==` ≠ installed |
 
 ### 🧹 Unused Packages & Cursor AI Review
 
@@ -83,6 +94,7 @@ The **Unused Packages** tab lists dependencies declared in your manifest files t
 | Action | What it does |
 |---|---|
 | **Remove** | Deletes the package line from its source file (`requirements.txt`, `pyproject.toml`, …), with fallback across included `-r` files and monorepo paths |
+| **Mark as used** | Persist a manual “this package is used” confirmation so it leaves the unused list (can be unmarked later) |
 | **Analyze with Cursor AI** | *(Cursor only)* Opens a new **Agent** chat with a structured review prompt — never runs automatically |
 | **Apply removals…** | After AI review, bulk-remove selected packages with confirmation and an automatic pre-removal snapshot |
 
@@ -150,21 +162,25 @@ Provider: Groq
 |---|---|
 | **CVE Detection** | Vulnerabilities flagged from PyPI advisory DB |
 | **License Risk** | Classifies MIT/BSD/Apache as safe, GPL/AGPL as restricted |
-| **Safe Mode** 🛡️ | Blocks major-version updates to prevent breaking changes |
+| **Safe Mode** 🛡️ | Blocks major-version updates to prevent breaking changes (Pin remains available — it is an explicit version choice) |
+| **Conflict-aware updates** | `pip check` conflicts block the Update button; revert to previous or force-update from the row |
 | **Python Compatibility** | Warns when packages require newer Python |
+| **Global Python guard** | Confirmation before install/update/pin when the target is not a workspace venv |
 
 ### 📊 Visualization & Analytics
 
 - **Dashboard** — health score, security stats, maintainer activity
 - **Dependency Graph** — interactive D3.js tree with collapsible nodes
-- **Performance** — ranks packages by install time (Fast/Moderate/Slow)
+- **Conflicts** — packages involved in `pip check` mismatches
+- **Environment** — venv health, pip version, and **Active project** selector in multi-root workspaces
+- **Performance** — ranks packages by install time (Fast/Moderate/Slow); times are recorded only for installs/updates/rollbacks started from this extension
 - **History** — timeline of all updates, installs, rollbacks
 - **Licenses** — packages grouped by license with risk badges
 - **Snapshots** — save and restore your entire environment
 
 ### 🛠 Power Tools
 
-Accessible from the **Export** dropdown in the main panel:
+Accessible from the **Tools** menu in the main panel:
 
 - **📤 Export Report** — Markdown or JSON snapshot of your dependencies
 - **📦 Generate requirements.txt** — auto-scan imports and create `requirements.txt`
@@ -212,17 +228,17 @@ Inside the Package Visualizer panel:
 
 > 📋 **Full release history:** [CHANGELOG.md](CHANGELOG.md)
 
-## 🎯 What's New in v3.2.1
+## 🎯 What's New in v3.3.0
 
-- 🔧 **Reliable package removal** — UTF-16 `requirements.txt` support, PEP 508 direct URLs (`pkg @ git+…`), and fallback search across included `-r` files
-- 🔗 **Bulk align fix** — sync now searches included requirement files, handles pip hash/continuation lines, and preserves environment markers
+- 📌 **Pin a chosen version** — from the list or detail panel, pick a known PyPI version; the extension installs it if needed, writes `==` in the dependency file, and hides updates until PyPI publishes something newer than at pin time. **Ignore** stays a separate action; **Unpin** lifts the hold only
+- 🔧 **Bulk Update** no longer rewrites exact pins of packages you did not select
 
-## 🎯 What's New in v3.2.0
+### v3.2.x highlights
 
-- 🏷️ **Independent community release** — published under `FaberVi` (separate from the original marketplace extension)
+- 🗂️ **Multi-root workspaces** — detect `.venv` in every folder; Environment tab **Active project** selector; scans, pip, CodeLens, and snapshots follow that root
+- 🧹 **Mark unused packages as used** (persisted) and unmark them later
 - 🛠️ **Tools menu** — export, generate, and uv/Poetry migration in one dropdown
-- ⚡ **uv migration (manual/automatic)** — optional cleanup of legacy `requirements*.txt` files
-- 📦 **Updated branding** — extension icon aligned with the in-app package tile
+- 🏷️ Independent community release under `FaberVi`
 
 ### v3.1.x highlights
 
@@ -257,7 +273,7 @@ The extension automatically detects and parses dependency files **recursively** 
 | `setup.cfg` | Declarative setuptools |
 | `Pipfile` | Pipenv |
 
-Virtual environments are auto-detected from: `.venv/`, `venv/`, `env/`, `.env/` at the workspace root **and** common subfolders (`backend/`, `api/`, `server/`, `python/`).
+Virtual environments are auto-detected from: `.venv/`, `venv/`, `env/`, `.env/` at the workspace root **and** common subfolders (`backend/`, `api/`, `server/`, `python/`). In a **multi-root** workspace, each folder is scanned for its own venv; pick the active project in the **Environment** tab.
 
 You can also pick a requirements file manually from the dashboard or the in-panel empty state.
 
@@ -279,10 +295,10 @@ You can also pick a requirements file manually from the dashboard or the in-pane
 
 ```bash
 # VS Code
-code --install-extension python-package-visualizer-community-3.2.1.vsix
+code --install-extension python-package-visualizer-community-3.3.0.vsix
 
 # Cursor
-cursor --install-extension python-package-visualizer-community-3.2.1.vsix --force
+cursor --install-extension python-package-visualizer-community-3.3.0.vsix --force
 ```
 
 Or run the full pipeline from the project root:
@@ -377,7 +393,7 @@ python-package-visualizer/
 │   │       ├── visualizerHandler.ts   # Core scan + update orchestration
 │   │       ├── visualizer/
 │   │       │   └── displayCompiler.ts # Payload building (shared by panel + sidebar)
-│   │       ├── packageInstaller.ts    # pip install/update/rollback
+│   │       ├── packageInstaller.ts    # pip install/update/rollback/pin
 │   │       ├── requirementsHandler.ts # Requirements file operations
 │   │       ├── reportExporter.ts      # Markdown/JSON export
 │   │       ├── snapshotHandler.ts     # Environment snapshots
@@ -399,6 +415,10 @@ python-package-visualizer/
 │   ├── services/
 │   │   ├── versionChecker.ts     # PyPI API queries
 │   │   ├── versionHistoryCache.ts # Local JSON history store
+│   │   ├── pinnedPackages.ts     # User-chosen version pins (tag + hold metadata)
+│   │   ├── ignoredUpdates.ts     # Dismissed PyPI latest versions
+│   │   ├── venvHealthChecker.ts  # Environment tab diagnostics
+│   │   ├── activeVenvRoot.ts     # Multi-root active project
 │   │   └── cursorAiService.ts    # Cursor Agent integration (unused review)
 │   ├── providers/                # CodeLens, Hover, and Diagnostics providers
 │   ├── ui/
@@ -418,6 +438,7 @@ python-package-visualizer/
 │   │   │   ├── i18n/             # Language packs (en.js, it.js)
 │   │   │   ├── filters.js        # Search, sort, filter logic
 │   │   │   ├── table.js          # Package list table renderer
+│   │   │   ├── table/            # Row builder, events, dialogs, bulk
 │   │   │   ├── tabs.js           # Tab router + shared tab utilities
 │   │   │   ├── tabs/             # Per-tab renderers
 │   │   │   │   ├── dashboard.js
@@ -425,7 +446,9 @@ python-package-visualizer/
 │   │   │   │   ├── licenses.js
 │   │   │   │   ├── performance.js
 │   │   │   │   ├── history.js
-│   │   │   │   └── snapshots.js
+│   │   │   │   ├── snapshots.js
+│   │   │   │   ├── conflicts.js
+│   │   │   │   └── venv-health.js
 │   │   │   ├── detail.js         # Package detail side panel
 │   │   │   ├── graph.js          # D3.js dependency graph
 │   │   │   ├── modal.js          # Modal dialogs
@@ -450,7 +473,9 @@ python-package-visualizer/
 │   │           ├── licenses.css
 │   │           ├── performance.css
 │   │           ├── history.css
-│   │           └── snapshots.css
+│   │           ├── snapshots.css
+│   │           ├── conflicts.css
+│   │           └── venv-health.css
 │   └── sidebar/
 │       ├── welcome.html          # Sidebar HTML template
 │       └── welcome.js            # Sidebar settings + event handlers
